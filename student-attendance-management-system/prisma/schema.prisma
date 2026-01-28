@@ -1,0 +1,307 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/* =========================
+   USER & AUTH
+========================= */
+
+model User {
+  id        String  @id @default(uuid())
+  fullname  String
+  email     String  @unique
+  password  String
+  role      Role
+  phone_number String @unique
+  photo_url   String?
+  is_active Boolean @default(true) // soft delete flag for User
+
+  teacher   Teacher?
+  student   Student?
+  refreshTokens RefreshToken[]
+  passwordResets PasswordReset[]
+  activity_logs ActivityLog[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+/* =========================
+   DEPARTMENT
+========================= */
+model Department {
+  id        String      @id @default(uuid())
+  name      DEPARTMENT  @unique
+
+  semesters Semester[]
+  subjects  Subject[]
+  sections  Section[]
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+/* =========================
+   BATCH
+========================= */
+model Batch {
+  id           String @id @default(uuid())
+  year         Int    @unique
+  name         String // e.g., "2082 Batch" or "2081-2085"
+
+  students     Student[]
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+/* =========================
+   SEMESTER
+========================= */
+model Semester {
+  id           String      @id @default(uuid())
+  number       Int
+  department_id String
+
+  department   Department @relation(fields: [department_id], references: [id])
+  sections     Section[]
+  subjects     Subject[]
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([number, department_id])
+}
+
+/* =========================
+   SECTION
+========================= */
+model Section {
+  id           String @id @default(uuid())
+  name         String
+  department_id String
+  semester_id   String
+
+  department Department @relation(fields: [department_id], references: [id])
+  semester   Semester   @relation(fields: [semester_id], references: [id])
+  students   Student[]
+  teaching_assignments TeachingAssignment[]
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([name, semester_id])
+}
+
+/* =========================
+   SUBJECT
+========================= */
+model Subject {
+  id           String @id @default(uuid())
+  name         String
+  code         String
+  department_id String
+  semester_id   String
+
+  department Department @relation(fields: [department_id], references: [id])
+  semester   Semester   @relation(fields: [semester_id], references: [id])
+  teaching_assignments TeachingAssignment[]
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([code, semester_id])
+}       
+
+/* =========================
+   STUDENT & TEACHER
+========================= */
+
+model Student {
+  id              String @id @default(uuid())
+  stdId           String @unique // Custom student ID for frontend display
+  roll_no         String
+  registration_no String?
+
+  user_id    String @unique
+  section_id String
+  batch_id   String
+
+  user    User    @relation(fields: [user_id], references: [id])
+  section Section @relation(fields: [section_id], references: [id])
+  batch   Batch   @relation(fields: [batch_id], references: [id])
+
+  attendance AttendanceRecord[]
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([roll_no, registration_no])
+}
+
+model Teacher {
+  id          String @id @default(uuid())
+  teacherId   String @unique // Custom teacher ID for frontend display
+  designation String
+
+  user_id String @unique
+  user    User   @relation(fields: [user_id], references: [id])
+
+  teaching_assignments TeachingAssignment[]
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+/* =========================
+   JOIN TABLES
+========================= */
+
+model TeachingAssignment {
+  id         String @id @default(uuid())
+  teacher_id String
+  subject_id String
+  section_id String
+
+  teacher Teacher @relation(fields: [teacher_id], references: [id])
+  subject Subject @relation(fields: [subject_id], references: [id])
+  section Section @relation(fields: [section_id], references: [id])
+
+  attendance_sessions AttendanceSession[]
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([teacher_id, subject_id, section_id])
+}
+
+/* =========================
+   ATTENDANCE
+========================= */
+
+model AttendanceSession {
+  id String @id @default(uuid())
+
+  teaching_assignment_id String
+  teaching_assignment    TeachingAssignment @relation(fields: [teaching_assignment_id], references: [id])
+
+  session_date DateTime @default(now())
+
+  records AttendanceRecord[]
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model AttendanceRecord {
+  id     String @id @default(uuid())
+  status STATUS
+
+  session_id String
+  student_id String
+
+  session AttendanceSession @relation(fields: [session_id], references: [id])
+  student Student           @relation(fields: [student_id], references: [id])
+
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([session_id, student_id])
+}
+
+/* =========================
+  REFRESH TOKENS
+========================= */
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+/* =========================
+   PASSWORD RESET
+========================= */
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+/* =========================
+   ACTIVITY LOG
+========================= */
+model ActivityLog {
+  id          String       @id @default(uuid())
+  user_id     String
+  action      ACTIVITY_TYPE
+  entity_type String
+  entity_id   String?
+  description String
+  metadata    Json?
+  ip_address  String?
+  user_agent  String?
+
+  user User @relation(fields: [user_id], references: [id])
+
+  created_at DateTime @default(now())
+
+  @@index([user_id])
+  @@index([entity_type, entity_id])
+  @@index([created_at])
+}
+
+/* =========================
+   ENUMS
+========================= */
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum DEPARTMENT {
+  CSIT
+  BCA
+  BBA
+  BBM
+  MBS
+}
+
+enum STATUS {
+  PRESENT
+  ABSENT
+}
+
+enum ACTIVITY_TYPE {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  VIEW
+  EXPORT
+  BULK_CREATE
+}

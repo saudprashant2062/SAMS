@@ -1,0 +1,50 @@
+{
+    "name": "sams",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "start": "node src/index.js",
+        "start:dev": "nodemon src/index.js",
+        "prisma:generate": "prisma generate",
+        "prisma:migrate": "prisma migrate dev"
+    },
+    "keywords": [
+        "sams"
+    ],
+    "author": "Aryan Saud and Safal Shyangwa",
+    "license": "ISC",
+    "dependencies": {
+        "@prisma/adapter-pg": "^7.2.0",
+        "@prisma/client": "^7.2.0",
+        "@sentry/node": "^10.32.1",
+        "bcryptjs": "^3.0.3",
+        "cloudinary": "^2.8.0",
+        "cookie-parser": "^1.4.7",
+        "cors": "^2.8.5",
+        "crypto": "^1.0.1",
+        "csv-parser": "^3.2.0",
+        "dotenv": "^17.2.3",
+        "express": "^5.2.1",
+        "helmet": "^8.1.0",
+        "morgan": "^1.10.1",
+        "multer": "^2.0.2",
+        "nodemailer": "^7.0.12",
+        "nodemon": "^3.1.11",
+        "pg": "^8.16.3",
+        "prisma": "^7.2.0",
+        "swagger-ui-express": "^5.0.1",
+        "zod": "^4.3.5"
+    },
+    "devDependencies": {
+        "@sentry/node": "^10.32.1",
+        "cookie-parser": "^1.4.7",
+        "cors": "^2.8.5",
+        "dotenv": "^17.2.3",
+        "express": "^5.2.1",
+        "jsonwebtoken": "^9.0.3",
+        "nodemon": "^3.1.11",
+        "pg": "^8.16.3"
+    }
+}
