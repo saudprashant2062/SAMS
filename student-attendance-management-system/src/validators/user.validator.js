@@ -8,7 +8,7 @@ const baseUserSchema = {
     email: z.string().email('Please enter a valid email address'),
     password: z
         .string()
-        .min(6, 'Password must be at least 6 characters')
+        .min(8, 'Password must be at least 8 characters')
         .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
         .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
         .regex(/\d/, 'Password must contain at least one number')
@@ -19,7 +19,20 @@ const baseUserSchema = {
             /^(?:98[0-9]|97[4-9]|96[0-9])\d{7}$/,
             'Please enter a valid Nepali phone number (e.g., 9812345678)',
         ),
-    photo_url: z.string().url().optional().nullable(),
+    photo_url: z
+        .string()
+        .optional()
+        .nullable()
+        .refine(
+            val =>
+                val === undefined ||
+                val === null ||
+                val === '' ||
+                z.string().url().safeParse(val).success,
+            {
+                message: 'Please enter a valid photo URL or leave empty',
+            },
+        ),
 };
 
 /* -----------------------
@@ -42,6 +55,15 @@ export const createTeacherWithUserSchema = z.object({
     body: z.object({
         ...baseUserSchema,
         designation: z.string().min(2, 'Designation must be at least 2 characters'),
+    }),
+});
+
+/* -----------------------
+   Single admin (only base user fields)
+------------------------*/
+export const createAdminSchema = z.object({
+    body: z.object({
+        ...baseUserSchema,
     }),
 });
 

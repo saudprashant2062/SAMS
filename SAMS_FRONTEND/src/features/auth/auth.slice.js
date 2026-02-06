@@ -1,9 +1,10 @@
 import { createSlice } from "@reduxjs/toolkit";
 
 // Get initial state from localStorage
+// Note: Access token is now stored in httpOnly cookie on backend
+// We only store user data in localStorage for UI purposes
 const getInitialState = () => {
   try {
-    const accessToken = localStorage.getItem("accessToken");
     const userString = localStorage.getItem("user");
     let user = null;
 
@@ -18,8 +19,8 @@ const getInitialState = () => {
 
     return {
       user,
-      accessToken: accessToken || null,
-      isAuthenticated: !!accessToken && !!user,
+      accessToken: null, // Access token will be managed via httpOnly cookies
+      isAuthenticated: !!user,
     };
   } catch {
     // localStorage access failed (e.g., private browsing)
@@ -40,20 +41,19 @@ const authSlice = createSlice({
       const { user, accessToken } = action.payload;
 
       state.user = user;
-      state.accessToken = accessToken;
+      state.accessToken = accessToken; // Keep in memory for backward compatibility
       state.isAuthenticated = true;
 
-      // Persist to localStorage
+      // Only persist user data to localStorage (not the token)
       localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("accessToken", accessToken);
     },
 
     // Update access token (useful for token refresh)
+    // Token is stored in memory only for this session
     updateAccessToken: (state, action) => {
       const { accessToken } = action.payload;
-
       state.accessToken = accessToken;
-      localStorage.setItem("accessToken", accessToken);
+      // Do not persist token to localStorage
     },
 
     // Logout - clear all auth state
@@ -64,7 +64,6 @@ const authSlice = createSlice({
 
       // Clear localStorage
       localStorage.removeItem("user");
-      localStorage.removeItem("accessToken");
     },
   },
 });

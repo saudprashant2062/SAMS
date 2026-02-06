@@ -56,7 +56,28 @@ export const getStudentDashboard = () => {
  * Get Student Attendance
  * GET /students/attendance
  */
-export const getStudentAttendance = (params = {}) => {
+export const getStudentAttendance = (filters = {}) => {
+  const params = {};
+
+  if (filters.subjectId) {
+    params.subject_id = filters.subjectId;
+  }
+
+  if (filters.status) {
+    params.status = filters.status;
+  }
+
+  if (filters.month) {
+    const year = new Date().getFullYear();
+    const monthIndex = parseInt(filters.month) - 1;
+    const startDate = new Date(year, monthIndex, 1);
+    const endDate = new Date(year, monthIndex + 1, 0);
+
+    // Format as YYYY-MM-DD
+    params.start_date = startDate.toISOString().split("T")[0];
+    params.end_date = endDate.toISOString().split("T")[0];
+  }
+
   return axiosInstance.get("/students/attendance", { params });
 };
 

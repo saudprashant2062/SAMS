@@ -10,8 +10,8 @@ import { getStudentSubjects } from "../../api/student.api";
 const StudentSubjects = () => {
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ["studentSubjects"],
-    queryFn: getStudentSubjects,
-    select: (res) => res.data.data.subjects || [],
+    queryFn: () => getStudentSubjects(),
+    select: (res) => res.data.data?.subjects || [],
   });
 
   const getAttendanceColor = (percentage) => {
@@ -184,25 +184,45 @@ const StudentSubjects = () => {
                     <span
                       className="text-sm font-semibold"
                       style={{
-                        color: getAttendanceColor(
-                          subject.attendancePercentage || 0,
-                        ),
+                        color:
+                          subject.totalClasses === 0
+                            ? "var(--text-muted)"
+                            : getAttendanceColor(
+                                subject.attendancePercentage || 0,
+                              ),
                       }}
                     >
-                      {subject.attendancePercentage?.toFixed(1) || 0}%
+                      {subject.totalClasses === 0
+                        ? "Pending"
+                        : `${subject.attendancePercentage?.toFixed(1) || 0}%`}
                     </span>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
+                  {subject.totalClasses > 0 ? (
+                    <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${subject.attendancePercentage || 0}%`,
+                          backgroundColor: getAttendanceColor(
+                            subject.attendancePercentage || 0,
+                          ),
+                        }}
+                      />
+                    </div>
+                  ) : (
                     <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${subject.attendancePercentage || 0}%`,
-                        backgroundColor: getAttendanceColor(
-                          subject.attendancePercentage || 0,
-                        ),
-                      }}
-                    />
-                  </div>
+                      className="w-full h-2 rounded-full bg-gray-100"
+                      style={{ backgroundColor: "#F1F5F9" }}
+                    >
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: "0%",
+                          backgroundColor: "var(--text-muted)",
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Credit Hours */}

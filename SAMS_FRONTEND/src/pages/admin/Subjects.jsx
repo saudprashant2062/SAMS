@@ -44,19 +44,19 @@ const Subjects = () => {
 
   const { data: subjects, isLoading } = useQuery({
     queryKey: ["subjects"],
-    queryFn: getAllSubjects,
+    queryFn: () => getAllSubjects(),
     select: (res) => res.data.data,
   });
 
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: getAllDepartments,
+    queryFn: () => getAllDepartments(),
     select: (res) => res.data.data,
   });
 
   const { data: semesters } = useQuery({
     queryKey: ["semesters"],
-    queryFn: getAllSemesters,
+    queryFn: () => getAllSemesters(),
     select: (res) => res.data.data,
   });
 
@@ -189,7 +189,7 @@ const Subjects = () => {
         </div>
         <button
           onClick={() => openModal()}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors w-full sm:w-auto justify-center"
+          className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors w-full sm:w-auto justify-center"
           style={{ backgroundColor: "var(--primary)" }}
         >
           <HiOutlinePlus className="w-4 h-4" />
@@ -216,7 +216,7 @@ const Subjects = () => {
             placeholder="Search by name or code..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-lg text-sm outline-none"
+            className="w-full pl-10 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none"
             style={{
               backgroundColor: "var(--bg-main)",
               border: "1px solid var(--border)",
@@ -244,7 +244,7 @@ const Subjects = () => {
               setFilterDepartment(e.target.value);
               setFilterSemester(""); // Reset semester filter when department changes
             }}
-            className="px-3 py-2 rounded-lg text-sm outline-none"
+            className="px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
             style={{
               backgroundColor: "var(--bg-main)",
               border: "1px solid var(--border)",
@@ -287,7 +287,7 @@ const Subjects = () => {
                 setFilterDepartment("");
                 setFilterSemester("");
               }}
-              className="text-sm px-3 py-2 rounded-lg"
+              className="text-xs md:text-sm px-3 py-1.5 md:py-2 rounded-lg"
               style={{ color: "var(--primary)" }}
             >
               Clear All
@@ -459,7 +459,7 @@ const Subjects = () => {
                   }
                   required
                   placeholder="e.g., Database Management"
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
@@ -482,7 +482,7 @@ const Subjects = () => {
                   }
                   required
                   placeholder="e.g., DBMS101"
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
@@ -507,7 +507,7 @@ const Subjects = () => {
                     })
                   }
                   required
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
@@ -572,7 +572,7 @@ const Subjects = () => {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     color: "var(--text-secondary)",
@@ -586,7 +586,7 @@ const Subjects = () => {
                   disabled={
                     createMutation.isPending || updateMutation.isPending
                   }
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors disabled:opacity-50"
                   style={{ backgroundColor: "var(--primary)" }}
                 >
                   {createMutation.isPending || updateMutation.isPending

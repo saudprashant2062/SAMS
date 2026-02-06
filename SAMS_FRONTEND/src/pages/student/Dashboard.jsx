@@ -12,32 +12,27 @@ import { getMyAttendanceSummary, getMySection } from "../../api/student.api";
 import { selectUser } from "../../features/auth/auth.selector";
 import { Link } from "react-router-dom";
 
+import DashboardSkeleton from "../../components/common/DashboardSkeleton";
+
 const StudentDashboard = () => {
   const user = useSelector(selectUser);
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["studentAttendanceSummary"],
-    queryFn: getMyAttendanceSummary,
+    queryFn: () => getMyAttendanceSummary(),
     select: (res) => res.data.data,
   });
 
   const { data: section, isLoading: sectionLoading } = useQuery({
     queryKey: ["studentSection"],
-    queryFn: getMySection,
+    queryFn: () => getMySection(),
     select: (res) => res.data.data,
   });
 
   const isLoading = summaryLoading || sectionLoading;
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div
-          className="animate-spin rounded-full h-8 w-8 border-b-2"
-          style={{ borderColor: "var(--primary)" }}
-        ></div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   const overallAttendance = summary?.overall?.attendance_percentage || 0;
@@ -81,6 +76,14 @@ const StudentDashboard = () => {
               {section?.section?.name || "—"}
             </p>
           </div>
+          {section?.batch && (
+            <div>
+              <p className="text-xs opacity-75">Batch</p>
+              <p className="text-lg font-semibold mt-1">
+                {section.batch.name || "—"}
+              </p>
+            </div>
+          )}
           <div>
             <p className="text-xs opacity-75">Roll Number</p>
             <p className="text-lg font-semibold mt-1">
@@ -236,7 +239,7 @@ const StudentDashboard = () => {
               className="text-sm text-center py-4"
               style={{ color: "var(--text-muted)" }}
             >
-              No subjects found
+              No subjects enrolled
             </p>
           ) : (
             <div className="space-y-4">
@@ -254,32 +257,38 @@ const StudentDashboard = () => {
                         className="text-xs"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        {subject.attended_sessions} / {subject.total_sessions}{" "}
-                        classes
+                        {subject.total_sessions === 0
+                          ? "No classes held yet"
+                          : `${subject.attended_sessions} / ${subject.total_sessions} classes`}
                       </p>
                     </div>
                     <span
                       className="text-sm font-semibold"
                       style={{
-                        color: getAttendanceColor(
-                          subject.attendance_percentage,
-                        ),
+                        color:
+                          subject.total_sessions === 0
+                            ? "var(--text-muted)"
+                            : getAttendanceColor(subject.attendance_percentage),
                       }}
                     >
-                      {subject.attendance_percentage.toFixed(1)}%
+                      {subject.total_sessions === 0
+                        ? "Pending"
+                        : `${subject.attendance_percentage.toFixed(1)}%`}
                     </span>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${subject.attendance_percentage}%`,
-                        backgroundColor: getAttendanceColor(
-                          subject.attendance_percentage,
-                        ),
-                      }}
-                    />
-                  </div>
+                  {subject.total_sessions > 0 && (
+                    <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${subject.attendance_percentage}%`,
+                          backgroundColor: getAttendanceColor(
+                            subject.attendance_percentage,
+                          ),
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -296,7 +296,7 @@ const Profile = () => {
                           >
                             {user.student.section.name}
                             {user.student.batch &&
-                              ` (Batch ${user.student.batch.year})`}
+                              ` (Batch ${user.student.batch.start_year})`}
                           </p>
                         </div>
                       </div>

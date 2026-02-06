@@ -11,7 +11,7 @@ import { Link } from "react-router-dom";
 const TeacherAssignments = () => {
   const { data: assignments, isLoading } = useQuery({
     queryKey: ["teacherAssignments"],
-    queryFn: getTeacherAssignments,
+    queryFn: () => getTeacherAssignments(),
     select: (res) => res.data.data,
   });
 

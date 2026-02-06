@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   HiOutlinePlus,
@@ -9,6 +9,8 @@ import {
   HiOutlineXCircle,
 } from "react-icons/hi";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import CascadingFilters from "../../components/common/CascadingFilters";
+import TableSkeleton from "../../components/common/TableSkeleton";
 import {
   getAllTeachingAssignments,
   createTeachingAssignment,
@@ -18,6 +20,8 @@ import {
   getAllSubjects,
   getAllSections,
   getAllDepartments,
+  getAllBatches,
+  getAllSemesters,
 } from "../../api/admin.api";
 
 const TeachingAssignments = () => {
@@ -38,8 +42,10 @@ const TeachingAssignments = () => {
   // Filter states
   const [filters, setFilters] = useState({
     department_id: "",
-    subject_id: "",
+    batch_id: "",
+    semester_id: "",
     section_id: "",
+    subject_id: "",
     teacher_id: "",
   });
   const [showFilters, setShowFilters] = useState(false);
@@ -47,25 +53,37 @@ const TeachingAssignments = () => {
   // Data queries
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: getAllDepartments,
+    queryFn: () => getAllDepartments(),
+    select: (res) => res.data.data,
+  });
+
+  const { data: batches } = useQuery({
+    queryKey: ["batches"],
+    queryFn: () => getAllBatches(),
+    select: (res) => res.data.data,
+  });
+
+  const { data: semesters } = useQuery({
+    queryKey: ["semesters"],
+    queryFn: () => getAllSemesters(),
     select: (res) => res.data.data,
   });
 
   const { data: subjects } = useQuery({
     queryKey: ["subjects"],
-    queryFn: getAllSubjects,
+    queryFn: () => getAllSubjects(),
     select: (res) => res.data.data,
   });
 
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: getAllSections,
-    select: (res) => res.data.data,
+    queryFn: () => getAllSections({ limit: 1000 }), // Get all for dropdowns
+    select: (res) => res.data?.data?.sections || res.data?.data || [],
   });
 
   const { data: teachers } = useQuery({
     queryKey: ["teachers"],
-    queryFn: getAllTeachers,
+    queryFn: () => getAllTeachers(),
     select: (res) => res.data.data?.teachers || res.data.data,
   });
 
@@ -75,21 +93,39 @@ const TeachingAssignments = () => {
     select: (res) => res.data.data,
   });
 
-  // Filter subjects and sections based on selected department
-  const filteredSubjects = filters.department_id
-    ? subjects?.filter((s) => s.department_id === filters.department_id)
-    : subjects;
+  // Filter subjects based on selected filters
+  const filteredSubjects = useMemo(() => {
+    if (!subjects) return [];
+    return subjects.filter((s) => {
+      if (filters.department_id && s.department_id !== filters.department_id)
+        return false;
+      if (filters.semester_id && s.semester_id !== filters.semester_id)
+        return false;
+      return true;
+    });
+  }, [subjects, filters.department_id, filters.semester_id]);
 
-  const filteredSections = filters.department_id
-    ? sections?.filter((s) => s.department_id === filters.department_id)
-    : sections;
+  // Filter sections based on selected filters
+  const filteredSections = useMemo(() => {
+    if (!sections) return [];
+    return sections.filter((s) => {
+      if (filters.department_id && s.department_id !== filters.department_id)
+        return false;
+      if (filters.batch_id && s.batch_id !== filters.batch_id) return false;
+      if (filters.semester_id && s.semester_id !== filters.semester_id)
+        return false;
+      return true;
+    });
+  }, [sections, filters.department_id, filters.batch_id, filters.semester_id]);
 
   // Clear all filters
   const clearFilters = () => {
     setFilters({
       department_id: "",
-      subject_id: "",
+      batch_id: "",
+      semester_id: "",
       section_id: "",
+      subject_id: "",
       teacher_id: "",
     });
   };
@@ -97,19 +133,22 @@ const TeachingAssignments = () => {
   // Check if any filter is active
   const hasActiveFilters = Object.values(filters).some((v) => v);
 
-  // --- Filtering logic for modal section dropdown ---
-  let selectedSubject = null;
-  let modalFilteredSections = [];
-  if (subjects && formData.subject_id) {
-    selectedSubject = subjects.find((subj) => subj.id === formData.subject_id);
-  }
-  if (selectedSubject && sections) {
-    modalFilteredSections = sections.filter(
-      (section) =>
-        section.department_id === selectedSubject.department_id &&
-        section.semester_id === selectedSubject.semester_id,
+  // --- Filtering logic for modal: Section → Subject flow ---
+  // Get selected section for the form
+  const selectedSection = useMemo(() => {
+    if (!sections || !formData.section_id) return null;
+    return sections.find((s) => s.id === formData.section_id);
+  }, [sections, formData.section_id]);
+
+  // Filter subjects based on selected section's department and semester
+  const modalFilteredSubjects = useMemo(() => {
+    if (!subjects || !selectedSection) return [];
+    return subjects.filter(
+      (subject) =>
+        subject.department_id === selectedSection.department_id &&
+        subject.semester_id === selectedSection.semester_id,
     );
-  }
+  }, [subjects, selectedSection]);
 
   const createMutation = useMutation({
     mutationFn: createTeachingAssignment,
@@ -201,10 +240,10 @@ const TeachingAssignments = () => {
             Assign teachers to subjects and sections
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 w-full sm:w-auto">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex-1 sm:flex-initial justify-center"
             style={{
               backgroundColor: showFilters
                 ? "var(--primary)"
@@ -218,7 +257,7 @@ const TeachingAssignments = () => {
           </button>
           <button
             onClick={() => openModal()}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors flex-1 sm:flex-initial justify-center"
             style={{ backgroundColor: "var(--primary)" }}
           >
             <HiOutlinePlus className="w-4 h-4" />
@@ -230,7 +269,7 @@ const TeachingAssignments = () => {
       {/* Filters */}
       {showFilters && (
         <div
-          className="rounded-xl p-4"
+          className="rounded-xl p-4 space-y-4"
           style={{
             backgroundColor: "var(--bg-card)",
             border: "1px solid var(--border)",
@@ -260,39 +299,42 @@ const TeachingAssignments = () => {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label
-                className="block text-xs font-medium mb-1"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                Department
-              </label>
-              <select
-                value={filters.department_id}
-                onChange={(e) =>
-                  setFilters({
-                    ...filters,
-                    department_id: e.target.value,
-                    subject_id: "",
-                    section_id: "",
-                  })
-                }
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                style={{
-                  backgroundColor: "var(--bg-main)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-primary)",
-                }}
-              >
-                <option value="">All Departments</option>
-                {departments?.map((dept) => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+
+          {/* Cascading Filters */}
+          <CascadingFilters
+            value={filters}
+            onChange={(newFilters) =>
+              setFilters({
+                ...filters,
+                ...newFilters,
+                subject_id:
+                  newFilters.semester_id !== filters.semester_id
+                    ? ""
+                    : filters.subject_id,
+              })
+            }
+            departments={departments || []}
+            batches={batches || []}
+            semesters={semesters || []}
+            sections={sections || []}
+            showSection={true}
+            showLabels={true}
+            required={{
+              department: false,
+              batch: false,
+              semester: false,
+              section: false,
+            }}
+            placeholders={{
+              department: "All Departments",
+              batch: "All Batches",
+              semester: "All Semesters",
+              section: "All Sections",
+            }}
+          />
+
+          {/* Additional Filters */}
+          <div className="flex flex-wrap gap-4 items-end">
             <div>
               <label
                 className="block text-xs font-medium mb-1"
@@ -303,51 +345,19 @@ const TeachingAssignments = () => {
               <select
                 value={filters.subject_id}
                 onChange={(e) =>
-                  setFilters({
-                    ...filters,
-                    subject_id: e.target.value,
-                    section_id: "",
-                  })
+                  setFilters({ ...filters, subject_id: e.target.value })
                 }
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                className="px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-40"
                 style={{
                   backgroundColor: "var(--bg-main)",
                   border: "1px solid var(--border)",
                   color: "var(--text-primary)",
                 }}
-                disabled={!filters.department_id && !subjects?.length}
               >
                 <option value="">All Subjects</option>
                 {filteredSubjects?.map((subj) => (
                   <option key={subj.id} value={subj.id}>
-                    {subj.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                className="block text-xs font-medium mb-1"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                Section
-              </label>
-              <select
-                value={filters.section_id}
-                onChange={(e) =>
-                  setFilters({ ...filters, section_id: e.target.value })
-                }
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                style={{
-                  backgroundColor: "var(--bg-main)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-primary)",
-                }}
-              >
-                <option value="">All Sections</option>
-                {filteredSections?.map((sec) => (
-                  <option key={sec.id} value={sec.id}>
-                    {sec.name}
+                    {subj.name} ({subj.code})
                   </option>
                 ))}
               </select>
@@ -364,7 +374,7 @@ const TeachingAssignments = () => {
                 onChange={(e) =>
                   setFilters({ ...filters, teacher_id: e.target.value })
                 }
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                className="px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-40"
                 style={{
                   backgroundColor: "var(--bg-main)",
                   border: "1px solid var(--border)",
@@ -433,12 +443,10 @@ const TeachingAssignments = () => {
             >
               {isLoading ? (
                 <tr>
-                  <td
-                    colSpan="5"
-                    className="px-4 py-8 text-center text-sm"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    Loading...
+                  <td colSpan="5">
+                    <div className="p-4">
+                        <TableSkeleton rows={8} columns={5} />
+                    </div>
                   </td>
                 </tr>
               ) : assignments?.length === 0 ? (
@@ -467,12 +475,26 @@ const TeachingAssignments = () => {
                       style={{ color: "var(--text-secondary)" }}
                     >
                       {item.subject?.name || "—"}
+                      <span
+                        className="block text-xs mt-0.5"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        {item.subject?.code} •{" "}
+                        {item.section?.semester?.department?.name || "—"}
+                      </span>
                     </td>
                     <td
                       className="px-4 py-3 text-sm"
                       style={{ color: "var(--text-secondary)" }}
                     >
                       {item.section?.name || "—"}
+                      <span
+                        className="block text-xs mt-0.5"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        {item.section?.semester?.department?.name || "—"} • Sem{" "}
+                        {item.section?.semester?.number || "—"}
+                      </span>
                     </td>
                     <td
                       className="px-4 py-3 text-sm"
@@ -539,7 +561,7 @@ const TeachingAssignments = () => {
                     setFormData({ ...formData, teacher_id: e.target.value })
                   }
                   required
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
@@ -559,25 +581,31 @@ const TeachingAssignments = () => {
                   className="block text-sm font-medium mb-1"
                   style={{ color: "var(--text-primary)" }}
                 >
-                  Subject
+                  Section
                 </label>
                 <select
-                  value={formData.subject_id}
+                  value={formData.section_id}
                   onChange={(e) =>
-                    setFormData({ ...formData, subject_id: e.target.value })
+                    setFormData({
+                      ...formData,
+                      section_id: e.target.value,
+                      subject_id: "", // Reset subject when section changes
+                    })
                   }
                   required
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
                     color: "var(--text-primary)",
                   }}
                 >
-                  <option value="">Select Subject</option>
-                  {subjects?.map((subject) => (
-                    <option key={subject.id} value={subject.id}>
-                      {subject.name}
+                  <option value="">Select Section</option>
+                  {sections?.map((section) => (
+                    <option key={section.id} value={section.id}>
+                      {section.name} - {section.department?.name} (Sem{" "}
+                      {section.semester?.number}) - {section.batch?.start_year}{" "}
+                      Batch
                     </option>
                   ))}
                 </select>
@@ -587,25 +615,30 @@ const TeachingAssignments = () => {
                   className="block text-sm font-medium mb-1"
                   style={{ color: "var(--text-primary)" }}
                 >
-                  Section
+                  Subject
                 </label>
                 <select
-                  value={formData.section_id}
+                  value={formData.subject_id}
                   onChange={(e) =>
-                    setFormData({ ...formData, section_id: e.target.value })
+                    setFormData({ ...formData, subject_id: e.target.value })
                   }
                   required
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  disabled={!formData.section_id}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
                     color: "var(--text-primary)",
                   }}
                 >
-                  <option value="">Select Section</option>
-                  {modalFilteredSections?.map((section) => (
-                    <option key={section.id} value={section.id}>
-                      {section.name} - {section.department?.name}
+                  <option value="">
+                    {formData.section_id
+                      ? "Select Subject"
+                      : "Select Section First"}
+                  </option>
+                  {modalFilteredSubjects?.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name} ({subject.code})
                     </option>
                   ))}
                 </select>
@@ -625,7 +658,7 @@ const TeachingAssignments = () => {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     color: "var(--text-secondary)",
@@ -639,7 +672,7 @@ const TeachingAssignments = () => {
                   disabled={
                     createMutation.isPending || updateMutation.isPending
                   }
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors disabled:opacity-50"
                   style={{ backgroundColor: "var(--primary)" }}
                 >
                   {createMutation.isPending || updateMutation.isPending

@@ -40,9 +40,10 @@ export const logActivity = async data => {
 };
 
 /**
- * Get recent activities
+ * Get recent activities with pagination
  * @param {Object} filters - Filters
- * @param {number} [filters.limit=20] - Number of records to return
+ * @param {number} [filters.page=1] - Page number
+ * @param {number} [filters.limit=20] - Number of records per page
  * @param {string} [filters.entity_type] - Filter by entity type
  * @param {string} [filters.user_id] - Filter by user
  * @param {string} [filters.startDate] - Filter by start date
@@ -50,8 +51,10 @@ export const logActivity = async data => {
  */
 export const getRecentActivitiesService = async (filters = {}) => {
     const {
+        page = 1,
         limit = 20,
         entity_type = null,
+        action = null, // Add action
         user_id = null,
         startDate = null,
         endDate = null,
@@ -63,6 +66,10 @@ export const getRecentActivitiesService = async (filters = {}) => {
         where.entity_type = entity_type;
     }
 
+    if (action) { // Add action filter logic
+        where.action = action;
+    }
+
     if (user_id) {
         where.user_id = user_id;
     }
@@ -72,6 +79,13 @@ export const getRecentActivitiesService = async (filters = {}) => {
         if (startDate) where.created_at.gte = new Date(startDate);
         if (endDate) where.created_at.lte = new Date(endDate);
     }
+
+    // Calculate skip for pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    // Get total count for pagination
+    const total = await prisma.activityLog.count({ where });
 
     const activities = await prisma.activityLog.findMany({
         where,
@@ -87,10 +101,19 @@ export const getRecentActivitiesService = async (filters = {}) => {
             },
         },
         orderBy: { created_at: 'desc' },
-        take: limit,
+        skip,
+        take,
     });
 
-    return activities;
+    return {
+        activities,
+        pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            totalPages: Math.ceil(total / parseInt(limit)),
+        },
+    };
 };
 
 /**

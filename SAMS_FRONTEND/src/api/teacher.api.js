@@ -33,6 +33,14 @@ export const createAttendanceSession = (data) => {
 };
 
 /**
+ * Update Attendance Session
+ * PATCH /teachers/attendance/session/:id
+ */
+export const updateAttendanceSession = (id, data) => {
+  return axiosInstance.patch(`/teachers/attendance/session/${id}`, data);
+};
+
+/**
  * Mark Attendance
  * POST /teachers/attendance/mark
  */

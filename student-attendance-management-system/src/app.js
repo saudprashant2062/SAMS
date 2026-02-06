@@ -32,7 +32,20 @@ const app = express();
    GLOBAL MIDDLEWARES
 ------------------------------ */
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
+
+// CORS configuration - ensure FRONTEND_URL is set in production
+const corsOrigin = process.env.FRONTEND_URL;
+if (!corsOrigin) {
+    console.warn('WARNING: FRONTEND_URL not set. CORS will be restricted to localhost.');
+}
+
+app.use(
+    cors({
+        origin: corsOrigin || 'http://localhost:5173',
+        credentials: true,
+    }),
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

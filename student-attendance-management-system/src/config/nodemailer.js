@@ -14,9 +14,13 @@ const transporter = nodemailer.createTransport({
 // Verify transporter configuration
 transporter.verify((error, success) => {
     if (error) {
-        console.error('Email configuration error:', error.message);
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Email configuration error:', error.message);
+        }
     } else {
-        console.log('Email server is ready to send messages');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Email server is ready to send messages');
+        }
     }
 });
 

@@ -10,21 +10,31 @@ import {
 } from "react-icons/hi";
 import { getDashboardStats, getRecentActivityLogs } from "../../api/admin.api";
 import { getRelativeTime } from "../../utils/formatDate";
+import DashboardSkeleton from "../../components/common/DashboardSkeleton";
 
 const AdminDashboard = () => {
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["adminDashboardStats"],
-    queryFn: getDashboardStats,
+    queryFn: () => getDashboardStats(),
     select: (res) => res.data.data,
     staleTime: 60000, // Cache for 1 minute to prevent refetching
   });
 
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ["recentActivityLogs"],
-    queryFn: () => getRecentActivityLogs({ limit: 10 }),
-    select: (res) => res.data.data?.activities || [],
+    queryFn: () => getRecentActivityLogs({ limit: 20 }),
+    select: (res) => {
+      const activities = res.data.data?.activities || [];
+      // Filter to only show activities from the last 24 hours
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      return activities.filter(a => new Date(a.created_at) > oneDayAgo);
+    },
     staleTime: 30000, // Cache for 30 seconds
   });
+
+  if (statsLoading) {
+    return <DashboardSkeleton />;
+  }
 
   const statCards = [
     {
@@ -146,14 +156,14 @@ const AdminDashboard = () => {
         <div className="flex flex-wrap gap-3">
           <Link
             to="/admin/users"
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors hover:opacity-90"
+            className="px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors hover:opacity-90"
             style={{ backgroundColor: "var(--primary)" }}
           >
             Manage Users
           </Link>
           <Link
             to="/admin/attendance"
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-gray-100"
+            className="px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors hover:bg-gray-100"
             style={{
               backgroundColor: "var(--bg-main)",
               color: "var(--primary)",
@@ -164,25 +174,25 @@ const AdminDashboard = () => {
           </Link>
           <Link
             to="/admin/teaching-assignments"
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-gray-100"
+            className="px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors hover:bg-gray-100"
             style={{
               backgroundColor: "var(--bg-main)",
               color: "var(--primary)",
               border: "1px solid var(--border)",
             }}
           >
-            Teaching Assignments
+            Assignments
           </Link>
           <Link
             to="/admin/reports"
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-gray-100"
+            className="px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors hover:bg-gray-100"
             style={{
               backgroundColor: "var(--bg-main)",
               color: "var(--primary)",
               border: "1px solid var(--border)",
             }}
           >
-            Generate Reports
+            Reports
           </Link>
         </div>
       </div>
@@ -237,7 +247,7 @@ const AdminDashboard = () => {
                   style={{ backgroundColor: "var(--bg-main)" }}
                 >
                   <div
-                    className="p-1.5 rounded-full mt-0.5 flex-shrink-0"
+                    className="p-1.5 rounded-full mt-0.5 shrink-0"
                     style={{ backgroundColor: actionStyle.bg }}
                   >
                     <ActionIcon

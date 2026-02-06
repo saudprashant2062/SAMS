@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   HiOutlineDocumentReport,
@@ -7,6 +7,8 @@ import {
   HiOutlineFilter,
   HiOutlineChartBar,
 } from "react-icons/hi";
+import CascadingFilters from "../../components/common/CascadingFilters";
+import TableSkeleton from "../../components/common/TableSkeleton";
 import {
   getAttendanceReport,
   exportAttendanceReport,
@@ -15,24 +17,27 @@ import {
   getAllSubjects,
   getAllSemesters,
   getAllDepartments,
+  getAllBatches,
 } from "../../api/admin.api";
 
 const AdminReports = () => {
   const [filters, setFilters] = useState({
-    departmentId: "",
-    sectionId: "",
-    subjectId: "",
-    semesterId: "",
+    department_id: "",
+    batch_id: "",
+    semester_id: "",
+    section_id: "",
+    subject_id: "",
     startDate: "",
     endDate: "",
   });
 
   // Transform camelCase filters to snake_case for API
   const transformFiltersForApi = (filters) => ({
-    department_id: filters.departmentId || undefined,
-    section_id: filters.sectionId || undefined,
-    subject_id: filters.subjectId || undefined,
-    semester_id: filters.semesterId || undefined,
+    department_id: filters.department_id || undefined,
+    batch_id: filters.batch_id || undefined,
+    section_id: filters.section_id || undefined,
+    subject_id: filters.subject_id || undefined,
+    semester_id: filters.semester_id || undefined,
     start_date: filters.startDate || undefined,
     end_date: filters.endDate || undefined,
   });
@@ -50,36 +55,65 @@ const AdminReports = () => {
 
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: getAllSections,
-    select: (res) => res.data.data,
+    queryFn: () => getAllSections({ limit: 1000 }), // Get all for dropdowns
+    select: (res) => res.data?.data?.sections || res.data?.data || [],
   });
 
   const { data: subjects } = useQuery({
     queryKey: ["subjects"],
-    queryFn: getAllSubjects,
+    queryFn: () => getAllSubjects(),
     select: (res) => res.data.data,
   });
 
   const { data: semesters } = useQuery({
     queryKey: ["semesters"],
-    queryFn: getAllSemesters,
+    queryFn: () => getAllSemesters(),
     select: (res) => res.data.data,
   });
 
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: getAllDepartments,
+    queryFn: () => getAllDepartments(),
+    select: (res) => res.data.data,
+  });
+
+  const { data: batches } = useQuery({
+    queryKey: ["batches"],
+    queryFn: () => getAllBatches(),
     select: (res) => res.data.data,
   });
 
   // Filter sections based on selected department and semester
-  const filteredSections = sections?.filter((section) => {
-    if (filters.departmentId && section.department_id !== filters.departmentId)
-      return false;
-    if (filters.semesterId && section.semester_id !== filters.semesterId)
-      return false;
-    return true;
-  });
+  const filteredSections = useMemo(() => {
+    if (!sections) return [];
+    return sections.filter((section) => {
+      if (
+        filters.department_id &&
+        section.department_id !== filters.department_id
+      )
+        return false;
+      if (filters.batch_id && section.batch_id !== filters.batch_id)
+        return false;
+      if (filters.semester_id && section.semester_id !== filters.semester_id)
+        return false;
+      return true;
+    });
+  }, [sections, filters.department_id, filters.batch_id, filters.semester_id]);
+
+  // Filter subjects based on selected filters
+  const filteredSubjects = useMemo(() => {
+    if (!subjects) return [];
+    return subjects.filter((subject) => {
+      if (
+        filters.department_id &&
+        subject.department_id !== filters.department_id
+      )
+        return false;
+      if (filters.semester_id && subject.semester_id !== filters.semester_id)
+        return false;
+      return true;
+    });
+  }, [subjects, filters.department_id, filters.semester_id]);
 
   const exportMutation = useMutation({
     mutationFn: (type) =>
@@ -138,7 +172,7 @@ const AdminReports = () => {
             <button
               onClick={() => handleExport("simple")}
               disabled={exportMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors flex-1 sm:flex-initial justify-center"
+              className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-white text-xs md:text-sm font-medium transition-colors flex-1 sm:flex-initial justify-center"
               style={{ backgroundColor: "var(--status-present)" }}
             >
               <HiOutlineDownload className="w-4 h-4" />
@@ -152,7 +186,7 @@ const AdminReports = () => {
             <button
               onClick={() => handleExport("department")}
               disabled={exportMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors flex-1 sm:flex-initial justify-center"
+              className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-white text-xs md:text-sm font-medium transition-colors flex-1 sm:flex-initial justify-center"
               style={{ backgroundColor: "var(--primary)" }}
             >
               <HiOutlineDownload className="w-4 h-4" />
@@ -169,7 +203,7 @@ const AdminReports = () => {
 
       {/* Filters */}
       <div
-        className="rounded-xl p-6 shadow-sm"
+        className="rounded-xl p-6 shadow-sm space-y-4"
         style={{
           backgroundColor: "var(--bg-card)",
           border: "1px solid var(--border)",
@@ -185,100 +219,41 @@ const AdminReports = () => {
           </h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Department Filter */}
-          <div>
-            <label
-              className="block text-xs font-medium mb-1"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Department
-            </label>
-            <select
-              value={filters.departmentId}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  departmentId: e.target.value,
-                  sectionId: "",
-                })
-              }
-              className="w-full px-4 py-2 rounded-lg text-sm outline-none"
-              style={{
-                backgroundColor: "var(--bg-main)",
-                border: "1px solid var(--border)",
-                color: "var(--text-primary)",
-              }}
-            >
-              <option value="">All Departments</option>
-              {departments?.map((dept) => (
-                <option key={dept.id} value={dept.id}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Cascading Filters */}
+        <CascadingFilters
+          value={filters}
+          onChange={(newFilters) =>
+            setFilters({
+              ...filters,
+              ...newFilters,
+              subject_id:
+                newFilters.semester_id !== filters.semester_id
+                  ? ""
+                  : filters.subject_id,
+            })
+          }
+          departments={departments || []}
+          batches={batches || []}
+          semesters={semesters || []}
+          sections={sections || []}
+          showSection={true}
+          showLabels={true}
+          required={{
+            department: false,
+            batch: false,
+            semester: false,
+            section: false,
+          }}
+          placeholders={{
+            department: "All Departments",
+            batch: "All Batches",
+            semester: "All Semesters",
+            section: "All Sections",
+          }}
+        />
 
-          <div>
-            <label
-              className="block text-xs font-medium mb-1"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Semester
-            </label>
-            <select
-              value={filters.semesterId}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  semesterId: e.target.value,
-                  sectionId: "",
-                })
-              }
-              className="w-full px-4 py-2 rounded-lg text-sm outline-none"
-              style={{
-                backgroundColor: "var(--bg-main)",
-                border: "1px solid var(--border)",
-                color: "var(--text-primary)",
-              }}
-            >
-              <option value="">All Semesters</option>
-              {semesters?.map((semester) => (
-                <option key={semester.id} value={semester.id}>
-                  Semester {semester.number}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label
-              className="block text-xs font-medium mb-1"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Section
-            </label>
-            <select
-              value={filters.sectionId}
-              onChange={(e) =>
-                setFilters({ ...filters, sectionId: e.target.value })
-              }
-              className="w-full px-4 py-2 rounded-lg text-sm outline-none"
-              style={{
-                backgroundColor: "var(--bg-main)",
-                border: "1px solid var(--border)",
-                color: "var(--text-primary)",
-              }}
-            >
-              <option value="">All Sections</option>
-              {filteredSections?.map((section) => (
-                <option key={section.id} value={section.id}>
-                  {section.name} ({section.department?.name || "N/A"})
-                </option>
-              ))}
-            </select>
-          </div>
-
+        {/* Additional Filters Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label
               className="block text-xs font-medium mb-1"
@@ -287,11 +262,11 @@ const AdminReports = () => {
               Subject
             </label>
             <select
-              value={filters.subjectId}
+              value={filters.subject_id}
               onChange={(e) =>
-                setFilters({ ...filters, subjectId: e.target.value })
+                setFilters({ ...filters, subject_id: e.target.value })
               }
-              className="w-full px-4 py-2 rounded-lg text-sm outline-none"
+              className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none"
               style={{
                 backgroundColor: "var(--bg-main)",
                 border: "1px solid var(--border)",
@@ -299,7 +274,7 @@ const AdminReports = () => {
               }}
             >
               <option value="">All Subjects</option>
-              {subjects?.map((subject) => (
+              {filteredSubjects?.map((subject) => (
                 <option key={subject.id} value={subject.id}>
                   {subject.name}
                 </option>
@@ -325,7 +300,7 @@ const AdminReports = () => {
                 onChange={(e) =>
                   setFilters({ ...filters, startDate: e.target.value })
                 }
-                className="w-full pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
+                className="w-full pl-9 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none"
                 style={{
                   backgroundColor: "var(--bg-main)",
                   border: "1px solid var(--border)",
@@ -353,7 +328,7 @@ const AdminReports = () => {
                 onChange={(e) =>
                   setFilters({ ...filters, endDate: e.target.value })
                 }
-                className="w-full pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
+                className="w-full pl-9 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none"
                 style={{
                   backgroundColor: "var(--bg-main)",
                   border: "1px solid var(--border)",
@@ -367,7 +342,7 @@ const AdminReports = () => {
             <button
               onClick={handleGenerateReport}
               disabled={isLoading}
-              className="w-full px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors"
+              className="w-full px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-white text-xs md:text-sm font-medium transition-colors"
               style={{ backgroundColor: "var(--primary)" }}
             >
               {isLoading ? "Generating..." : "Generate Report"}
@@ -377,7 +352,9 @@ const AdminReports = () => {
       </div>
 
       {/* Report Results */}
-      {report && (
+      {isLoading ? (
+        <TableSkeleton rows={10} columns={8} />
+      ) : report ? (
         <>
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -664,7 +641,7 @@ const AdminReports = () => {
             </div>
           </div>
         </>
-      )}
+      ) : null}
 
       {/* Empty State */}
       {!report && !isLoading && (

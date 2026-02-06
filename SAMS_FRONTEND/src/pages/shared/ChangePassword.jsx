@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { HiOutlineEye, HiOutlineEyeOff } from "react-icons/hi";
 import axiosInstance from "../../api/axiosInstance";
+import PasswordField from "../../components/common/PasswordField";
+import { isPasswordValid, validatePassword } from "../../utils/validation";
 
 const changePassword = (data) => {
   return axiosInstance.patch("/auth/reset-password", data);
@@ -12,11 +13,6 @@ const ChangePassword = () => {
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
-  });
-  const [showPasswords, setShowPasswords] = useState({
-    current: false,
-    new: false,
-    confirm: false,
   });
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -38,6 +34,11 @@ const ChangePassword = () => {
     if (formData.newPassword !== formData.confirmPassword) {
       return;
     }
+
+    if (!isPasswordValid(validatePassword(formData.newPassword))) {
+      return;
+    }
+
     mutation.mutate({
       oldPassword: formData.currentPassword,
       newPassword: formData.newPassword,
@@ -73,145 +74,36 @@ const ChangePassword = () => {
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Current Password */}
-          <div>
-            <label
-              htmlFor="currentPassword"
-              className="block text-sm font-medium mb-2"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Current Password
-            </label>
-            <div className="relative">
-              <input
-                id="currentPassword"
-                type={showPasswords.current ? "text" : "password"}
-                value={formData.currentPassword}
-                onChange={(e) =>
-                  setFormData({ ...formData, currentPassword: e.target.value })
-                }
-                required
-                className="w-full px-3 py-2 pr-10 rounded-lg text-sm"
-                style={{
-                  backgroundColor: "var(--bg-main)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-primary)",
-                }}
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  setShowPasswords({
-                    ...showPasswords,
-                    current: !showPasswords.current,
-                  })
-                }
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {showPasswords.current ? (
-                  <HiOutlineEyeOff className="w-4 h-4" />
-                ) : (
-                  <HiOutlineEye className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-          </div>
+          <PasswordField
+            label="Current Password"
+            name="currentPassword"
+            value={formData.currentPassword}
+            onChange={(e) => setFormData({ ...formData, currentPassword: e.target.value })}
+            placeholder="Enter current password"
+            required
+          />
 
           {/* New Password */}
-          <div>
-            <label
-              htmlFor="newPassword"
-              className="block text-sm font-medium mb-2"
-              style={{ color: "var(--text-primary)" }}
-            >
-              New Password
-            </label>
-            <div className="relative">
-              <input
-                id="newPassword"
-                type={showPasswords.new ? "text" : "password"}
-                value={formData.newPassword}
-                onChange={(e) =>
-                  setFormData({ ...formData, newPassword: e.target.value })
-                }
-                required
-                minLength={6}
-                className="w-full px-3 py-2 pr-10 rounded-lg text-sm"
-                style={{
-                  backgroundColor: "var(--bg-main)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-primary)",
-                }}
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  setShowPasswords({
-                    ...showPasswords,
-                    new: !showPasswords.new,
-                  })
-                }
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {showPasswords.new ? (
-                  <HiOutlineEyeOff className="w-4 h-4" />
-                ) : (
-                  <HiOutlineEye className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-          </div>
+          <PasswordField
+            label="New Password"
+            name="newPassword"
+            value={formData.newPassword}
+            onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
+            placeholder="Enter new password"
+            required
+            showRequirements
+          />
 
           {/* Confirm Password */}
-          <div>
-            <label
-              htmlFor="confirmPassword"
-              className="block text-sm font-medium mb-2"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Confirm New Password
-            </label>
-            <div className="relative">
-              <input
-                id="confirmPassword"
-                type={showPasswords.confirm ? "text" : "password"}
-                value={formData.confirmPassword}
-                onChange={(e) =>
-                  setFormData({ ...formData, confirmPassword: e.target.value })
-                }
-                required
-                className="w-full px-3 py-2 pr-10 rounded-lg text-sm"
-                style={{
-                  backgroundColor: "var(--bg-main)",
-                  border: `1px solid ${passwordsMatch ? "var(--border)" : "var(--danger)"}`,
-                  color: "var(--text-primary)",
-                }}
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  setShowPasswords({
-                    ...showPasswords,
-                    confirm: !showPasswords.confirm,
-                  })
-                }
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {showPasswords.confirm ? (
-                  <HiOutlineEyeOff className="w-4 h-4" />
-                ) : (
-                  <HiOutlineEye className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-            {!passwordsMatch && (
-              <p className="text-xs mt-1" style={{ color: "var(--danger)" }}>
-                Passwords do not match
-              </p>
-            )}
-          </div>
+          <PasswordField
+            label="Confirm New Password"
+            name="confirmPassword"
+            value={formData.confirmPassword}
+            onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+            placeholder="Confirm new password"
+            required
+            error={!passwordsMatch ? "Passwords do not match" : ""}
+          />
 
           {/* Error Message */}
           {mutation.isError && (

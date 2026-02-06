@@ -12,14 +12,14 @@ export const AuthLoginValidator = z.object({
 
 /* ---------- RESET PASSWORD ---------- */
 export const resetPasswordValidator = z.object({
-    oldPassword: z.string().min(6, { message: 'Old password must be at least 6 characters' }),
+    oldPassword: z.string().min(8, { message: 'Old password must be at least 8 characters' }),
     newPassword: z
         .string()
-        .min(6, { message: 'New password must be at least 6 characters long' })
+        .min(8, { message: 'New password must be at least 8 characters long' })
         .regex(/[A-Z]/, 'New password must contain at least one uppercase letter')
         .regex(/[a-z]/, 'New password must contain at least one lowercase letter')
         .regex(/\d/, 'New password must contain at least one number')
-        .regex(/[@#$!%*?&]/, 'New password must contain at least one special character'),
+        .regex(/[#@$!%*?&]/, 'New password must contain at least one special character (#@$!%*?&)'),
 });
 
 /* ---------- FORGOT PASSWORD ---------- */
@@ -32,9 +32,9 @@ export const resetPasswordWithTokenValidator = z.object({
     token: z.string().min(1, { message: 'Reset token is required' }),
     newPassword: z
         .string()
-        .min(6, { message: 'New password must be at least 6 characters long' })
+        .min(8, { message: 'New password must be at least 8 characters long' })
         .regex(/[A-Z]/, 'New password must contain at least one uppercase letter')
         .regex(/[a-z]/, 'New password must contain at least one lowercase letter')
         .regex(/\d/, 'New password must contain at least one number')
-        .regex(/[@#$!%*?&]/, 'New password must contain at least one special character'),
+        .regex(/[#@$!%*?&]/, 'New password must contain at least one special character (#@$!%*?&)'),
 });

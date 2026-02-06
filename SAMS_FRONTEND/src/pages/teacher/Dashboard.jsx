@@ -11,22 +11,17 @@ import { getTeacherDashboard } from "../../api/teacher.api";
 import { Link } from "react-router-dom";
 import { getRelativeTime } from "../../utils/formatDate";
 
+import DashboardSkeleton from "../../components/common/DashboardSkeleton";
+
 const TeacherDashboard = () => {
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ["teacherDashboard"],
-    queryFn: getTeacherDashboard,
+    queryFn: () => getTeacherDashboard(),
     select: (res) => res.data.data,
   });
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div
-          className="animate-spin rounded-full h-8 w-8 border-b-2"
-          style={{ borderColor: "var(--primary)" }}
-        ></div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   const stats = [

@@ -111,10 +111,39 @@ export const createAttendanceSessionService = async data => {
    UPDATE ATTENDANCE SESSION (ADMIN)
 ===================================================== */
 export const updateAttendanceSessionService = async (id, data) => {
-    const session = await prisma.attendanceSession.findUnique({ where: { id } });
+    const session = await prisma.attendanceSession.findUnique({
+        where: { id },
+        include: { records: true },
+    });
 
     if (!session || session.is_deleted) {
         throw new ApiError(404, 'Attendance session not found');
+    }
+
+    if (data.session_date) {
+        const newDate = new Date(data.session_date);
+        
+        // Prevent duplicate sessions for the same assignment on the same day when updating
+        const startOfDay = new Date(newDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(newDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const existingSession = await prisma.attendanceSession.findFirst({
+            where: {
+                teaching_assignment_id: session.teaching_assignment_id,
+                session_date: {
+                    gte: startOfDay,
+                    lte: endOfDay,
+                },
+                id: { not: id }, // Exclude current session
+                is_deleted: false,
+            },
+        });
+
+        if (existingSession) {
+            throw new ApiError(400, 'An attendance session already exists for this subject on this date');
+        }
     }
 
     return prisma.attendanceSession.update({
@@ -131,31 +160,28 @@ export const updateAttendanceSessionService = async (id, data) => {
 };
 
 /* =====================================================
-   DELETE ATTENDANCE SESSION (SOFT DELETE WITH CASCADE)
-===================================================== */
+   DELETE ATTENDANCE SESSION (ADMIN - HARD DELETE)
+ ===================================================== */
 export const deleteAttendanceSessionService = async id => {
     const session = await prisma.attendanceSession.findUnique({
         where: { id },
-        include: { records: true },
     });
 
-    if (!session || session.is_deleted) {
+    if (!session) {
         throw new ApiError(404, 'Attendance session not found');
     }
 
-    // Soft delete cascade: session + all its records
+    // Hard delete cascade: delete all records first, then the session
     await prisma.$transaction([
-        prisma.attendanceRecord.updateMany({
+        prisma.attendanceRecord.deleteMany({
             where: { session_id: id },
-            data: { is_deleted: true },
         }),
-        prisma.attendanceSession.update({
+        prisma.attendanceSession.delete({
             where: { id },
-            data: { is_deleted: true },
         }),
     ]);
 
-    return { message: 'Attendance session and records deleted' };
+    return { message: 'Attendance session and records deleted permanently' };
 };
 
 /* =====================================================
@@ -198,16 +224,15 @@ export const updateAttendanceRecordService = async (id, data) => {
 export const deleteAttendanceRecordService = async id => {
     const record = await prisma.attendanceRecord.findUnique({ where: { id } });
 
-    if (!record || record.is_deleted) {
+    if (!record) {
         throw new ApiError(404, 'Attendance record not found');
     }
 
-    await prisma.attendanceRecord.update({
+    await prisma.attendanceRecord.delete({
         where: { id },
-        data: { is_deleted: true },
     });
 
-    return { message: 'Attendance record deleted' };
+    return { message: 'Attendance record deleted permanently' };
 };
 
 /* =====================================================

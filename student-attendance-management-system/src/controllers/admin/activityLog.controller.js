@@ -10,16 +10,15 @@ import {
  * GET /admin/activity-logs
  */
 export const getRecentActivities = asyncHandler(async (req, res) => {
-    const { limit = 20, entity_type } = req.query;
+    const { page = 1, limit = 20, entity_type } = req.query;
 
-    const activities = await getRecentActivitiesService({
+    const result = await getRecentActivitiesService({
+        page: parseInt(page) || 1,
         limit: parseInt(limit) || 20,
         entity_type,
     });
 
-    const count = await getActivityCountService();
-
-    res.status(200).json(new ApiResponse(200, { activities, total: count }, 'Activities fetched'));
+    res.status(200).json(new ApiResponse(200, result, 'Activities fetched'));
 });
 
 /**
@@ -27,33 +26,17 @@ export const getRecentActivities = asyncHandler(async (req, res) => {
  * GET /admin/activity-logs/all
  */
 export const getAllActivities = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 50, entity_type, user_id, start_date, end_date } = req.query;
+    const { page = 1, limit = 50, entity_type, action, user_id, start_date, end_date } = req.query;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const activities = await getRecentActivitiesService({
-        limit: parseInt(limit),
+    const result = await getRecentActivitiesService({
+        page: parseInt(page) || 1,
+        limit: parseInt(limit) || 50,
         entity_type,
+        action,
         user_id,
         startDate: start_date,
         endDate: end_date,
     });
 
-    const count = await getActivityCountService();
-
-    res.status(200).json(
-        new ApiResponse(
-            200,
-            {
-                activities,
-                pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
-                    total: count,
-                    pages: Math.ceil(count / parseInt(limit)),
-                },
-            },
-            'Activities fetched',
-        ),
-    );
+    res.status(200).json(new ApiResponse(200, result, 'Activities fetched'));
 });

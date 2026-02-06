@@ -30,7 +30,8 @@ export const getMeService = async userId => {
                     batch: {
                         select: {
                             id: true,
-                            year: true,
+                            start_year: true,
+                            end_year: true,
                             name: true,
                         },
                     },
@@ -60,39 +61,18 @@ export const getMeService = async userId => {
    LOGIN
 ===================================================== */
 export const loginService = async ({ email, password }) => {
+    // Step 1: Fetch only auth-related fields
     const user = await prisma.user.findUnique({
         where: { email },
-        include: {
-            student: {
-                select: {
-                    id: true,
-                    stdId: true,
-                    roll_no: true,
-                    registration_no: true,
-                    batch: {
-                        select: {
-                            id: true,
-                            year: true,
-                            name: true,
-                        },
-                    },
-                    section: {
-                        include: {
-                            department: true,
-                            semester: true,
-                        },
-                    },
-                },
-            },
-            teacher: {
-                select: {
-                    id: true,
-                    teacherId: true,
-                    designation: true,
-                },
-            },
+        select: {
+            id: true,
+            email: true,
+            password: true,
+            role: true,
+            is_active: true,
         },
     });
+
     if (!user) throw new ApiError(401, 'No account found with this email address');
     if (!user.is_active)
         throw new ApiError(403, 'Your account has been deactivated. Please contact admin.');
@@ -112,7 +92,7 @@ export const loginService = async ({ email, password }) => {
         },
     });
 
-    // Return complete user data (excluding password)
+    // Return minimal user data (excluding password)
     const { password: _, ...userData } = user;
 
     return {

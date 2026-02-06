@@ -5,6 +5,7 @@ import ApiResponse from '../../utils/ApiResponse.utils.js';
 import {
     createStudentWithUserSchema,
     createTeacherWithUserSchema,
+    createAdminSchema,
 } from '../../validators/user.validator.js';
 
 import {
@@ -227,7 +228,7 @@ export const activateUser = asyncHandler(async (req, res) => {
    CREATE ADMIN
 ================================ */
 export const createAdmin = asyncHandler(async (req, res) => {
-    const parsed = createStudentWithUserSchema.safeParse({ body: req.body });
+    const parsed = createAdminSchema.safeParse({ body: req.body });
     if (!parsed.success) {
         throw new ApiError(422, 'Validation failed', parsed.error.format());
     }

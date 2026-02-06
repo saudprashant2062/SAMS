@@ -85,11 +85,31 @@ export const getTeachingAssignmentById = async id => {
 
 export const deleteTeachingAssignment = async id => {
     const ta = await prisma.teachingAssignment.findUnique({ where: { id } });
-    if (!ta || ta.is_deleted) throw new ApiError(404, 'Teaching Assignment not found');
+    if (!ta) throw new ApiError(404, 'Teaching Assignment not found');
 
-    // Soft delete
-    return prisma.teachingAssignment.update({
-        where: { id },
-        data: { is_deleted: true },
+    // Hard delete cascade
+    await prisma.$transaction(async tx => {
+        // Find all sessions for this assignment
+        const sessions = await tx.attendanceSession.findMany({
+            where: { teaching_assignment_id: id },
+            select: { id: true },
+        });
+        const sessionIds = sessions.map(s => s.id);
+
+        if (sessionIds.length > 0) {
+            // Delete records
+            await tx.attendanceRecord.deleteMany({
+                where: { session_id: { in: sessionIds } },
+            });
+            // Delete sessions
+            await tx.attendanceSession.deleteMany({
+                where: { id: { in: sessionIds } },
+            });
+        }
+
+        // Finally delete the assignment
+        return await tx.teachingAssignment.delete({ where: { id } });
     });
+
+    return { message: 'Teaching assignment and related sessions deleted permanently' };
 };

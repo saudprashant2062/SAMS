@@ -30,7 +30,7 @@ const Departments = () => {
 
   const { data: departments, isLoading } = useQuery({
     queryKey: ["departments"],
-    queryFn: getAllDepartments,
+    queryFn: () => getAllDepartments(),
     select: (res) => res.data.data,
   });
 
@@ -122,7 +122,7 @@ const Departments = () => {
         </div>
         <button
           onClick={() => openModal()}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors w-full sm:w-auto justify-center"
+          className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors w-full sm:w-auto justify-center"
           style={{ backgroundColor: "var(--primary)" }}
         >
           <HiOutlinePlus className="w-4 h-4" />
@@ -296,7 +296,7 @@ const Departments = () => {
                   }
                   required
                   disabled={editingDept}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50"
+                  className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
@@ -323,7 +323,7 @@ const Departments = () => {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     color: "var(--text-secondary)",
@@ -337,7 +337,7 @@ const Departments = () => {
                   disabled={
                     createMutation.isPending || updateMutation.isPending
                   }
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors disabled:opacity-50"
                   style={{ backgroundColor: "var(--primary)" }}
                 >
                   {createMutation.isPending || updateMutation.isPending

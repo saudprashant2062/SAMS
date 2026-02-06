@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Prisma Schema for SAMS (Student Academic Management System)
+// Redesigned for academic correctness, historical safety, and scalability
 
 generator client {
   provider = "prisma-client-js"
@@ -9,32 +9,40 @@ datasource db {
   provider = "postgresql"
 }
 
-/* =========================
+/* ============================================================
    USER & AUTH
-========================= */
+   Users are global and not batch-specific
+============================================================ */
 
 model User {
-  id        String  @id @default(uuid())
-  fullname  String
-  email     String  @unique
-  password  String
-  role      Role
-  phone_number String @unique
-  photo_url   String?
-  is_active Boolean @default(true) // soft delete flag for User
+  id           String  @id @default(uuid())
+  fullname     String
+  email        String  @unique
+  password     String
+  role         Role
+  phone_number String  @unique
+  photo_url    String?
+  is_active    Boolean @default(true)
 
-  teacher   Teacher?
-  student   Student?
+  teacher      Teacher?
+  student      Student?
   refreshTokens RefreshToken[]
   passwordResets PasswordReset[]
   activity_logs ActivityLog[]
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  @@index([email])
+  @@index([is_active])
+  @@index([role])
 }
-/* =========================
+
+/* ============================================================
    DEPARTMENT
-========================= */
+   Static master data - same across all batches
+============================================================ */
+
 model Department {
   id        String      @id @default(uuid())
   name      DEPARTMENT  @unique
@@ -42,118 +50,190 @@ model Department {
   semesters Semester[]
   subjects  Subject[]
   sections  Section[]
+  batches   Batch[]     // Reverse relation added
 
   is_deleted Boolean  @default(false)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  @@index([name])
 }
 
-/* =========================
-   BATCH
-========================= */
+/* ============================================================
+   BATCH (Academic Session)
+   Critical for historical data separation!
+   Example: 2082-2086 Batch (BS calendar years)
+============================================================ */
+
 model Batch {
   id           String @id @default(uuid())
-  year         Int    @unique
-  name         String // e.g., "2082 Batch" or "2081-2085"
+  name         String // e.g., "2082 Batch" or "2082-2086"
+  start_year   Int    // BS year when batch started, e.g., 2082
+  end_year     Int    // BS year when batch will graduate, e.g., 2086
+
+  department_id String  // Which department this batch belongs to
+  department   Department @relation(fields: [department_id], references: [id])
 
   students     Student[]
+  sections     Section[]  // Sections belong to both batch and department
+  
+  is_active    Boolean @default(true)  // Current batch flag
+  is_deleted  Boolean @default(false)
+  created_at   DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-  is_deleted Boolean  @default(false)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  // Unique constraint: start_year + department_id (one batch per start year per department)
+  @@unique([start_year, department_id])
+  @@index([start_year])
+  @@index([is_active])
+  @@index([department_id])
 }
 
-/* =========================
+/* ============================================================
    SEMESTER
-========================= */
+   Master data: Semester 1-8 per department
+   NOT batch-specific - same for all batches
+   Example: BSc CSIT always has 8 semesters
+============================================================ */
+
 model Semester {
-  id           String      @id @default(uuid())
-  number       Int
+  id            String      @id @default(uuid())
+  number        Int         @db.SmallInt  // 1-8
+  name          String?     // Optional display name, e.g., "First Semester"
   department_id String
 
-  department   Department @relation(fields: [department_id], references: [id])
-  sections     Section[]
-  subjects     Subject[]
+  department    Department  @relation(fields: [department_id], references: [id])
+  subjects      Subject[]
+  sections      Section[]   // Section relationship via join table
 
-  is_deleted Boolean  @default(false)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  is_deleted    Boolean     @default(false)
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
 
+  // Unique constraint: Each department has one of each semester number
   @@unique([number, department_id])
+  @@index([department_id])
+  @@index([number])
 }
 
-/* =========================
+/* ============================================================
    SECTION
-========================= */
+   HISTORICAL CONTEXT REQUIRED!
+   A section is uniquely identified by:
+   (Batch + Department + Semester + Section Name)
+   
+   Example:
+   - 2082 Batch, CSIT Dept, Semester 1, Section A
+   - 2082 Batch, CSIT Dept, Semester 2, Section A  ← Different from above!
+============================================================ */
+
 model Section {
-  id           String @id @default(uuid())
-  name         String
+  id            String  @id @default(uuid())
+  name          String  // e.g., "Section A", "Section B"
+  
+  // All required for historical context
   department_id String
   semester_id   String
+  batch_id      String
 
-  department Department @relation(fields: [department_id], references: [id])
-  semester   Semester   @relation(fields: [semester_id], references: [id])
-  students   Student[]
+  department    Department @relation(fields: [department_id], references: [id])
+  semester      Semester   @relation(fields: [semester_id], references: [id])
+  batch         Batch      @relation(fields: [batch_id], references: [id])
+  
+  students      Student[]
   teaching_assignments TeachingAssignment[]
+  attendance_sessions AttendanceSession[]
 
-  is_deleted Boolean  @default(false)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  // Archival flags
+  is_archived   Boolean @default(false)  // Used during promotion
+  is_deleted    Boolean @default(false)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
 
-  @@unique([name, semester_id])
+  // Unique constraint prevents duplicate sections in same batch+semester
+  @@unique([name, batch_id, semester_id])
+  @@index([batch_id])
+  @@index([department_id])
+  @@index([semester_id])
 }
 
-/* =========================
+/* ============================================================
    SUBJECT
-========================= */
+   NOT batch-specific - shared across all batches
+   Belongs to Department + Semester only
+   
+   Example: "Data Structures" (CSIT Dept, Semester 2)
+   This SAME subject is taught to 2081, 2082, 2083 batches
+============================================================ */
+
 model Subject {
-  id           String @id @default(uuid())
-  name         String
-  code         String
+  id            String  @id @default(uuid())
+  name          String
+  code          String  @unique  // Unique subject code
+  description   String?
+  credit_hours  Int     @default(3)
+  
   department_id String
   semester_id   String
 
-  department Department @relation(fields: [department_id], references: [id])
-  semester   Semester   @relation(fields: [semester_id], references: [id])
+  department    Department @relation(fields: [department_id], references: [id])
+  semester      Semester   @relation(fields: [semester_id], references: [id])
+  
   teaching_assignments TeachingAssignment[]
 
-  is_deleted Boolean  @default(false)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  is_deleted    Boolean  @default(false)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
 
-  @@unique([code, semester_id])
-}       
+  // Subject is unique by code (institution-wide)
+  @@index([department_id])
+  @@index([semester_id])
+}
 
-/* =========================
-   STUDENT & TEACHER
-========================= */
+/* ============================================================
+   STUDENT
+   Students belong to a specific batch
+   Promoted semester-by-semester within their batch
+============================================================ */
 
 model Student {
   id              String @id @default(uuid())
-  stdId           String @unique // Custom student ID for frontend display
+  stdId           String @unique // Display ID, e.g., "2082CSIT001"
   roll_no         String
   registration_no String?
 
-  user_id    String @unique
-  section_id String
-  batch_id   String
+  user_id         String  @unique
+  section_id      String
+  batch_id        String
 
-  user    User    @relation(fields: [user_id], references: [id])
-  section Section @relation(fields: [section_id], references: [id])
-  batch   Batch   @relation(fields: [batch_id], references: [id])
+  user            User    @relation(fields: [user_id], references: [id])
+  section         Section @relation(fields: [section_id], references: [id])
+  batch           Batch   @relation(fields: [batch_id], references: [id])
 
-  attendance AttendanceRecord[]
+  // Academic tracking
+  current_semester Int    @default(1) // Track for quick access
+  
+  attendance      AttendanceRecord[]
 
-  is_deleted Boolean  @default(false)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  is_deleted      Boolean  @default(false)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
   @@unique([roll_no, registration_no])
+  @@index([section_id])
+  @@index([batch_id])
+  @@index([current_semester])
 }
+
+/* ============================================================
+   TEACHER
+   Teachers are not batch-specific
+   Assigned to specific sections via TeachingAssignment
+============================================================ */
 
 model Teacher {
   id          String @id @default(uuid())
-  teacherId   String @unique // Custom teacher ID for frontend display
+  teacherId   String @unique
   designation String
 
   user_id String @unique
@@ -164,34 +244,45 @@ model Teacher {
   is_deleted Boolean  @default(false)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  @@index([user_id])
 }
 
-/* =========================
-   JOIN TABLES
-========================= */
+/* ============================================================
+   TEACHING ASSIGNMENT
+   Links Teacher + Subject + Section
+   This is where batch context comes from (via Section)
+============================================================ */
 
 model TeachingAssignment {
   id         String @id @default(uuid())
+  
   teacher_id String
   subject_id String
   section_id String
 
-  teacher Teacher @relation(fields: [teacher_id], references: [id])
-  subject Subject @relation(fields: [subject_id], references: [id])
-  section Section @relation(fields: [section_id], references: [id])
-
+  teacher    Teacher @relation(fields: [teacher_id], references: [id])
+  subject    Subject @relation(fields: [subject_id], references: [id])
+  section    Section @relation(fields: [section_id], references: [id])
+  
   attendance_sessions AttendanceSession[]
 
   is_deleted Boolean  @default(false)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  // One assignment per teacher per subject per section
   @@unique([teacher_id, subject_id, section_id])
+  @@index([section_id])
+  @@index([subject_id])
+  @@index([teacher_id])
 }
 
-/* =========================
+/* ============================================================
    ATTENDANCE
-========================= */
+   Fully historical - sessions belong to specific sections
+   and dates
+============================================================ */
 
 model AttendanceSession {
   id String @id @default(uuid())
@@ -199,13 +290,25 @@ model AttendanceSession {
   teaching_assignment_id String
   teaching_assignment    TeachingAssignment @relation(fields: [teaching_assignment_id], references: [id])
 
+  section_id String
+  section    Section @relation(fields: [section_id], references: [id])
+
   session_date DateTime @default(now())
+  start_time   DateTime?
+  end_time     DateTime?
+  is_cancelled Boolean  @default(false)
+  notes        String?
 
   records AttendanceRecord[]
 
   is_deleted Boolean  @default(false)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  @@index([teaching_assignment_id])
+  @@index([section_id])
+  @@index([session_date])
+  @@index([is_deleted])
 }
 
 model AttendanceRecord {
@@ -223,11 +326,16 @@ model AttendanceRecord {
   updated_at DateTime @updatedAt
 
   @@unique([session_id, student_id])
+  @@index([student_id])
+  @@index([status])
+  @@index([is_deleted])
 }
 
-/* =========================
-  REFRESH TOKENS
-========================= */
+/* ============================================================
+   ACTIVITY LOG
+   Audit trail for all system actions
+============================================================ */
+
 model RefreshToken {
   id        String   @id @default(uuid())
   userId    String
@@ -235,11 +343,15 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
-/* =========================
+/* ============================================================
    PASSWORD RESET
-========================= */
+============================================================ */
+
 model PasswordReset {
   id        String   @id @default(uuid())
   userId    String
@@ -247,11 +359,16 @@ model PasswordReset {
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
-/* =========================
+/* ============================================================
    ACTIVITY LOG
-========================= */
+   Audit trail for all system actions
+============================================================ */
+
 model ActivityLog {
   id          String       @id @default(uuid())
   user_id     String
@@ -272,9 +389,9 @@ model ActivityLog {
   @@index([created_at])
 }
 
-/* =========================
+/* ============================================================
    ENUMS
-========================= */
+============================================================ */
 
 enum Role {
   ADMIN
@@ -304,4 +421,49 @@ enum ACTIVITY_TYPE {
   VIEW
   EXPORT
   BULK_CREATE
+  PROMOTE
+  ARCHIVE
 }
+
+/* ============================================================
+   DESIGN RATIONALE
+============================================================ */
+
+/*
+1. BATCH (Academic Session):
+   - Created BEFORE semesters/sections
+   - Represents entry year of student cohort
+   - Used to prevent data mixing across years
+   - Example: 2082 Batch = students who joined in 2082
+
+2. SEMESTER (Master Data):
+   - NOT batch-specific
+   - Created once per department (Semester 1-8)
+   - Shared across all batches
+   - Example: All batches go through "Semester 3"
+
+3. SECTION (Historical Context):
+   - MUST include batch_id for context
+   - Unique per batch + semester combination
+   - Example: "Section A" in 2082 Sem1 ≠ "Section A" in 2082 Sem2
+   - Archived during promotion (not deleted)
+
+4. SUBJECT (Shared):
+   - NOT batch-specific
+   - Created per department + semester
+   - Shared across all batches
+   - TeachingAssignment links subject to section (adding batch context)
+
+5. STUDENT PROMOTION:
+   - Students keep same batch_id throughout
+   - Sections are archived, not modified
+   - New sections created for target semester
+   - Students moved to new sections
+   - Historical records preserved
+
+6. DATA SAFETY:
+   - All tables have is_deleted (soft delete)
+   - Section has is_archived (for promotion workflow)
+   - Original data never modified, only archived
+*/
+

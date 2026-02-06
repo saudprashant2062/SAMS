@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   HiOutlineCalendar,
@@ -10,6 +10,7 @@ import {
   HiOutlineCheck,
 } from "react-icons/hi";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import CascadingFilters from "../../components/common/CascadingFilters";
 import {
   getAllAttendanceSessions,
   getAttendanceSessionById,
@@ -20,11 +21,17 @@ import {
   getAllSections,
   getAllSubjects,
   getAllTeachingAssignments,
+  getAllDepartments,
+  getAllBatches,
+  getAllSemesters,
 } from "../../api/admin.api";
 
 const AdminAttendance = () => {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({
+    department_id: "",
+    batch_id: "",
+    semester_id: "",
     section_id: "",
     subject_id: "",
     start_date: "",
@@ -44,6 +51,9 @@ const AdminAttendance = () => {
     isOpen: false,
     sessionId: null,
   });
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
+  const [editForm, setEditForm] = useState({ session_date: "" });
 
   const { data: sessions, isLoading } = useQuery({
     queryKey: ["attendanceSessions", filters],
@@ -51,21 +61,39 @@ const AdminAttendance = () => {
     select: (res) => res.data.data,
   });
 
+  const { data: departments } = useQuery({
+    queryKey: ["departments"],
+    queryFn: () => getAllDepartments(),
+    select: (res) => res.data.data,
+  });
+
+  const { data: batches } = useQuery({
+    queryKey: ["batches"],
+    queryFn: () => getAllBatches(),
+    select: (res) => res.data.data,
+  });
+
+  const { data: semesters } = useQuery({
+    queryKey: ["semesters"],
+    queryFn: () => getAllSemesters(),
+    select: (res) => res.data.data,
+  });
+
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: getAllSections,
+    queryFn: () => getAllSections(),
     select: (res) => res.data.data,
   });
 
   const { data: subjects } = useQuery({
     queryKey: ["subjects"],
-    queryFn: getAllSubjects,
+    queryFn: () => getAllSubjects(),
     select: (res) => res.data.data,
   });
 
   const { data: teachingAssignments } = useQuery({
     queryKey: ["teachingAssignments"],
-    queryFn: getAllTeachingAssignments,
+    queryFn: () => getAllTeachingAssignments(),
     select: (res) => res.data.data,
   });
 
@@ -90,6 +118,21 @@ const AdminAttendance = () => {
     mutationFn: deleteAttendanceSession,
     onSuccess: () => {
       queryClient.invalidateQueries(["attendanceSessions"]);
+    },
+  });
+
+  // Update session mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => updateAttendanceSession(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["attendanceSessions"]);
+      setIsEditModalOpen(false);
+      setEditingSession(null);
+    },
+    onError: (error) => {
+      setErrorMessage(
+        error.response?.data?.message || "Failed to update session",
+      );
     },
   });
 
@@ -202,6 +245,24 @@ const AdminAttendance = () => {
     }
   };
 
+  const handleUpdateSessionDate = (e) => {
+    e.preventDefault();
+    updateMutation.mutate({
+      id: editingSession.id,
+      data: {
+        session_date: new Date(editForm.session_date).toISOString(),
+      },
+    });
+  };
+
+  const openEditModal = (session) => {
+    setEditingSession(session);
+    setEditForm({
+      session_date: new Date(session.session_date).toISOString().split("T")[0],
+    });
+    setIsEditModalOpen(true);
+  };
+
   const handleStatusChange = (studentId, status) => {
     setAttendanceRecords((prev) =>
       prev.map((r) => (r.student_id === studentId ? { ...r, status } : r)),
@@ -257,7 +318,7 @@ const AdminAttendance = () => {
         </div>
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors w-full sm:w-auto justify-center"
+          className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors w-full sm:w-auto justify-center"
           style={{ backgroundColor: "var(--primary)" }}
         >
           <HiOutlinePlus className="w-4 h-4" />
@@ -267,90 +328,143 @@ const AdminAttendance = () => {
 
       {/* Filters */}
       <div
-        className="rounded-xl p-4 shadow-sm"
+        className="rounded-xl p-4 shadow-sm space-y-4"
         style={{
           backgroundColor: "var(--bg-card)",
           border: "1px solid var(--border)",
         }}
       >
-        <div className="flex flex-wrap gap-4">
-          <select
-            value={filters.section_id}
-            onChange={(e) =>
-              setFilters({ ...filters, section_id: e.target.value })
-            }
-            className="px-4 py-2 rounded-lg text-sm outline-none min-w-[180px]"
-            style={{
-              backgroundColor: "var(--bg-main)",
-              border: "1px solid var(--border)",
-              color: "var(--text-primary)",
-            }}
-          >
-            <option value="">All Sections</option>
-            {sections?.map((section) => (
-              <option key={section.id} value={section.id}>
-                {section.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={filters.subject_id}
-            onChange={(e) =>
-              setFilters({ ...filters, subject_id: e.target.value })
-            }
-            className="px-4 py-2 rounded-lg text-sm outline-none min-w-[180px]"
-            style={{
-              backgroundColor: "var(--bg-main)",
-              border: "1px solid var(--border)",
-              color: "var(--text-primary)",
-            }}
-          >
-            <option value="">All Subjects</option>
-            {subjects?.map((subject) => (
-              <option key={subject.id} value={subject.id}>
-                {subject.name}
-              </option>
-            ))}
-          </select>
-          <div className="relative">
-            <HiOutlineCalendar
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+        {/* Cascading Filters */}
+        <CascadingFilters
+          value={filters}
+          onChange={(newFilters) =>
+            setFilters({
+              ...filters,
+              ...newFilters,
+              subject_id:
+                newFilters.section_id !== filters.section_id
+                  ? ""
+                  : filters.subject_id,
+            })
+          }
+          departments={departments || []}
+          batches={batches || []}
+          semesters={semesters || []}
+          sections={sections || []}
+          showSection={true}
+          showLabels={true}
+          required={{
+            department: false,
+            batch: false,
+            semester: false,
+            section: false,
+          }}
+          placeholders={{
+            department: "All Departments",
+            batch: "All Batches",
+            semester: "All Semesters",
+            section: "All Sections",
+          }}
+        />
+
+        {/* Additional Filters Row */}
+        <div className="flex flex-wrap gap-4 items-end">
+          {/* Subject Filter */}
+          <div>
+            <label
+              className="block text-xs font-medium mb-1"
               style={{ color: "var(--text-muted)" }}
-            />
-            <input
-              type="date"
-              value={filters.start_date}
+            >
+              Subject
+            </label>
+            <select
+              value={filters.subject_id}
               onChange={(e) =>
-                setFilters({ ...filters, start_date: e.target.value })
+                setFilters({ ...filters, subject_id: e.target.value })
               }
-              placeholder="Start Date"
-              className="pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
+              className="px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-40"
               style={{
                 backgroundColor: "var(--bg-main)",
                 border: "1px solid var(--border)",
                 color: "var(--text-primary)",
               }}
-            />
+            >
+              <option value="">All Subjects</option>
+              {subjects
+                ?.filter((s) =>
+                  filters.department_id
+                    ? s.department_id === filters.department_id
+                    : true,
+                )
+                .filter((s) =>
+                  filters.semester_id
+                    ? s.semester_id === filters.semester_id
+                    : true,
+                )
+                .map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {/* Date Range */}
+          <div className="relative">
+            <label
+              className="block text-xs font-medium mb-1"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Start Date
+            </label>
+            <div className="relative">
+              <HiOutlineCalendar
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                style={{ color: "var(--text-muted)" }}
+              />
+              <input
+                type="date"
+                value={filters.start_date}
+                onChange={(e) =>
+                  setFilters({ ...filters, start_date: e.target.value })
+                }
+                placeholder="Start Date"
+                className="pl-9 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-35"
+                style={{
+                  backgroundColor: "var(--bg-main)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
           </div>
           <div className="relative">
-            <HiOutlineCalendar
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+            <label
+              className="block text-xs font-medium mb-1"
               style={{ color: "var(--text-muted)" }}
-            />
-            <input
-              type="date"
-              value={filters.end_date}
-              onChange={(e) =>
-                setFilters({ ...filters, end_date: e.target.value })
-              }
-              placeholder="End Date"
-              className="pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
-              style={{
-                backgroundColor: "var(--bg-main)",
-                border: "1px solid var(--border)",
-                color: "var(--text-primary)",
-              }}
-            />
+            >
+              End Date
+            </label>
+            <div className="relative">
+              <HiOutlineCalendar
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                style={{ color: "var(--text-muted)" }}
+              />
+              <input
+                type="date"
+                value={filters.end_date}
+                onChange={(e) =>
+                  setFilters({ ...filters, end_date: e.target.value })
+                }
+                placeholder="End Date"
+                className="pl-9 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-35"
+                style={{
+                  backgroundColor: "var(--bg-main)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -499,9 +613,17 @@ const AdminAttendance = () => {
                             <HiOutlineEye className="w-4 h-4" />
                           </button>
                           <button
+                            onClick={() => openEditModal(session)}
+                            className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                            title="Edit Date"
+                            style={{ color: "var(--primary)" }}
+                          >
+                            <HiOutlineCalendar     className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => openMarkAttendance(session)}
                             className="p-1.5 rounded hover:bg-gray-100 transition-colors"
-                            title="Mark Attendance"
+                            title="Mark/Edit Attendance"
                             style={{ color: "var(--status-present)" }}
                           >
                             <HiOutlinePencil className="w-4 h-4" />
@@ -566,7 +688,7 @@ const AdminAttendance = () => {
                     })
                   }
                   required
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
@@ -599,7 +721,7 @@ const AdminAttendance = () => {
                     })
                   }
                   required
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
@@ -625,7 +747,7 @@ const AdminAttendance = () => {
                     setIsCreateModalOpen(false);
                     setErrorMessage("");
                   }}
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     color: "var(--text-secondary)",
@@ -637,7 +759,7 @@ const AdminAttendance = () => {
                 <button
                   type="submit"
                   disabled={createMutation.isPending}
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors disabled:opacity-50"
                   style={{ backgroundColor: "var(--primary)" }}
                 >
                   {createMutation.isPending ? "Creating..." : "Create"}
@@ -731,7 +853,7 @@ const AdminAttendance = () => {
                               e.target.value,
                             )
                           }
-                          className="px-2 py-1 rounded text-sm outline-none"
+                          className="px-2 py-1 rounded text-xs md:text-sm outline-none"
                           style={{
                             backgroundColor: "var(--bg-main)",
                             border: "1px solid var(--border)",
@@ -767,7 +889,7 @@ const AdminAttendance = () => {
                   setMarkingSession(null);
                   setAttendanceRecords([]);
                 }}
-                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
                 style={{
                   backgroundColor: "var(--bg-main)",
                   color: "var(--text-secondary)",
@@ -779,7 +901,7 @@ const AdminAttendance = () => {
               <button
                 onClick={handleMarkAttendance}
                 disabled={markMutation.isPending}
-                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 style={{ backgroundColor: "var(--primary)" }}
               >
                 <HiOutlineCheck className="w-4 h-4" />
@@ -922,18 +1044,104 @@ const AdminAttendance = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={deleteConfirm.isOpen}
         onClose={() => setDeleteConfirm({ isOpen: false, sessionId: null })}
         onConfirm={confirmDelete}
-        title="Delete Session"
-        message="Are you sure you want to delete this attendance session? This action cannot be undone."
-        confirmText="Delete"
+        title="Delete Session Permanently"
+        message="Are you sure you want to delete this attendance session and all its records permanently? This action CANNOT be undone and data will be lost forever."
+        confirmText="Delete Permanently"
         cancelText="Cancel"
         type="danger"
         isLoading={deleteMutation.isPending}
       />
+
+      {/* Edit Session Modal */}
+      {isEditModalOpen && editingSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="w-full max-w-md rounded-xl p-6 shadow-lg"
+            style={{ backgroundColor: "var(--bg-card)" }}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3
+                className="text-lg font-semibold"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Edit Session Date
+              </h3>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-2 rounded-lg hover:bg-gray-100"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <HiOutlineX className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateSessionDate} className="space-y-4">
+              <div>
+                <label
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Session Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={editForm.session_date}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, session_date: e.target.value })
+                  }
+                  max={new Date().toISOString().split("T")[0]}
+                  className="w-full px-4 py-2 rounded-lg border outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: "white",
+                    borderColor: "var(--border)",
+                    color: "var(--text-primary)",
+                  }}
+                />
+              </div>
+
+              {errorMessage && (
+                <div
+                  className="p-3 rounded-lg text-sm"
+                  style={{
+                    backgroundColor: "var(--danger-subtle)",
+                    color: "var(--danger)",
+                  }}
+                >
+                  {errorMessage}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="flex-1 px-4 py-2 rounded-lg font-medium border transition-colors"
+                  style={{
+                    backgroundColor: "white",
+                    borderColor: "var(--border)",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateMutation.isPending}
+                  className="flex-1 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50"
+                  style={{ backgroundColor: "var(--primary)" }}
+                >
+                  {updateMutation.isPending ? "Updating..." : "Update Date"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -13,11 +13,13 @@ export const createSubjectService = async ({ name, code, department_id, semester
     const exists = await prisma.subject.findFirst({ where: { code, semester_id } });
     if (exists) throw new ApiError(409, 'Subject code already exists in this semester');
 
-    return prisma.subject.create({ data: { name, code, department_id, semester_id } });
+    const created = await prisma.subject.create({ data: { name, code, department_id, semester_id } });
+    return created;
 };
 
-export const getAllSubjectsService = async () =>
-    prisma.subject.findMany({
+export const getAllSubjectsService = async () => {
+
+    const subjects = await prisma.subject.findMany({
         where: { is_deleted: false },
         include: {
             department: true,
@@ -27,6 +29,9 @@ export const getAllSubjectsService = async () =>
             },
         },
     });
+
+    return subjects;
+};
 
 export const getSubjectByIdService = async id => {
     const subj = await prisma.subject.findUnique({
@@ -64,11 +69,52 @@ export const getSubjectByIdService = async id => {
 export const updateSubjectService = async (id, data) => {
     const subj = await prisma.subject.findUnique({ where: { id } });
     if (!subj) throw new ApiError(404, 'Subject not found');
-    return prisma.subject.update({ where: { id }, data });
+    
+    const updated = await prisma.subject.update({ where: { id }, data });
+    return updated;
 };
 
 export const deleteSubjectService = async id => {
     const subj = await prisma.subject.findUnique({ where: { id } });
     if (!subj) throw new ApiError(404, 'Subject not found');
-    return prisma.subject.update({ where: { id }, data: { is_deleted: true } });
+
+    // Hard delete cascade
+    await prisma.$transaction(async tx => {
+        // Find all assignments for this subject
+        const assignments = await tx.teachingAssignment.findMany({
+            where: { subject_id: id },
+            select: { id: true },
+        });
+        const assignmentIds = assignments.map(a => a.id);
+
+        if (assignmentIds.length > 0) {
+            // Find all sessions for these assignments
+            const sessions = await tx.attendanceSession.findMany({
+                where: { teaching_assignment_id: { in: assignmentIds } },
+                select: { id: true },
+            });
+            const sessionIds = sessions.map(s => s.id);
+
+            if (sessionIds.length > 0) {
+                // Delete records
+                await tx.attendanceRecord.deleteMany({
+                    where: { session_id: { in: sessionIds } },
+                });
+                // Delete sessions
+                await tx.attendanceSession.deleteMany({
+                    where: { id: { in: sessionIds } },
+                });
+            }
+
+            // Delete assignments
+            await tx.teachingAssignment.deleteMany({
+                where: { id: { in: assignmentIds } },
+            });
+        }
+
+        // Finally delete the subject
+        return await tx.subject.delete({ where: { id } });
+    });
+
+    return { message: 'Subject and all related data deleted permanently' };
 };

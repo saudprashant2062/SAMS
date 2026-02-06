@@ -31,18 +31,13 @@ const useAuth = () => {
   // Logout mutation
   const logoutMutation = useMutation({
     mutationFn: logoutApi,
-    onSuccess: () => {
-      // Clear React Query cache to prevent stale user data
-      queryClient.clear();
-      dispatch(logoutAction());
-      navigate("/login");
+    onMutate: () => {
+        // Optimistic Logout: Clear state immediately
+        queryClient.clear();
+        dispatch(logoutAction());
+        navigate("/login");
     },
-    onError: () => {
-      // Even if API fails, clear local state
-      queryClient.clear();
-      dispatch(logoutAction());
-      navigate("/login");
-    },
+    // No need for onSuccess/onError handling since we already redirected
   });
 
   // Get current user query (useful for refreshing user data)
@@ -53,7 +48,7 @@ const useAuth = () => {
     isLoading: isLoadingUser,
   } = useQuery({
     queryKey: ["currentUser", user?.id],
-    queryFn: getMe,
+    queryFn: () => getMe(),
     enabled: isAuthenticated && !!user?.id,
     select: (response) => response.data.data,
     staleTime: 5 * 60 * 1000, // 5 minutes

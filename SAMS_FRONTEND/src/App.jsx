@@ -16,22 +16,27 @@ const App = () => {
       // If we have stored auth, verify it's still valid
       if (isAuthenticated) {
         try {
-          // Try to get current user to verify token
-          const response = await getMe();
-          const user = response.data.data;
-          const storedToken = localStorage.getItem("accessToken");
-          dispatch(setCredentials({ user, accessToken: storedToken }));
+          // Always try to refresh token first to ensure we have an accessToken in memory
+          // (Since getMe only verifies the cookie but doesn't return the token)
+          const refreshResponse = await refreshToken();
+          const newAccessToken = refreshResponse.data.data.accessToken;
+          
+          const userResponse = await getMe();
+          const user = userResponse.data.data;
+          
+          dispatch(setCredentials({ user, accessToken: newAccessToken }));
         } catch (error) {
-          // Token might be expired, try refresh
+          // If refresh fails, try getMe as fallback (maybe session is valid but no persistence?)
+          // But usually if refresh fails, we should logout
           try {
-            const refreshResponse = await refreshToken();
-            const newAccessToken = refreshResponse.data.data.accessToken;
-            const userResponse = await getMe();
-            const user = userResponse.data.data;
-            dispatch(setCredentials({ user, accessToken: newAccessToken }));
-          } catch (refreshError) {
-            // Refresh token also expired, logout
-            dispatch(logout());
+             // Optional: Check if getMe works without token (just cookie)
+             // If so, we might need to handle "cookie-only" mode, but better to logout if no token
+             await getMe();
+             // If getMe succeeds, we are technically logged in but have no token...
+             // This causes the 401 loop. So assume failed refresh = logout.
+             throw new Error("Token missing");
+          } catch (e) {
+             dispatch(logout());
           }
         }
       }
@@ -39,7 +44,7 @@ const App = () => {
     };
 
     initAuth();
-  }, []);
+  }, [dispatch, isAuthenticated]);
 
   if (isLoading) {
     return (

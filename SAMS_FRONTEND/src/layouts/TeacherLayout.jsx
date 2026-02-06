@@ -10,12 +10,12 @@ import {
   HiOutlineClipboardCheck,
   HiOutlineLogout,
   HiOutlineMenu,
-  HiOutlineAcademicCap,
   HiOutlineX,
   HiOutlineCog,
   HiOutlineUser,
   HiOutlineKey,
 } from "react-icons/hi";
+import Logo from "../components/Logo";
 
 const TeacherLayout = () => {
   const dispatch = useDispatch();
@@ -59,7 +59,7 @@ const TeacherLayout = () => {
 
   return (
     <div
-      className="min-h-screen flex"
+      className="h-screen flex overflow-hidden"
       style={{ backgroundColor: "var(--bg-main)" }}
     >
       {/* Mobile Sidebar Overlay */}
@@ -80,25 +80,14 @@ const TeacherLayout = () => {
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="p-4 border-b border-white/10 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: "var(--primary-hover)" }}
-              >
-                <HiOutlineAcademicCap className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-white font-semibold text-base">Academia</h1>
-                <p className="text-white/60 text-xs">Teacher Portal</p>
-              </div>
-            </div>
+            <Logo className="h-8 w-auto" subtitle="Teacher Portal" />
             <button onClick={closeMobileMenu} className="text-white/70 p-1">
               <HiOutlineX className="w-6 h-6" />
             </button>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-3 overflow-y-auto">
+          <nav className="flex-1 p-3 overflow-hidden">
             <ul className="space-y-1">
               {menuItems.map((item) => {
                 const Icon = item.icon;
@@ -154,25 +143,14 @@ const TeacherLayout = () => {
         style={{ backgroundColor: "var(--primary)" }}
       >
         {/* Logo */}
-        <div className="p-4 border-b border-white/10">
+        <div className="p-4 border-b border-white/10 flex items-center justify-center">
           <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: "var(--primary-hover)" }}
-            >
-              <HiOutlineAcademicCap className="w-6 h-6 text-white" />
-            </div>
-            {sidebarOpen && (
-              <div>
-                <h1 className="text-white font-semibold text-base">Academia</h1>
-                <p className="text-white/60 text-xs">Teacher Portal</p>
-              </div>
-            )}
+             <Logo className="h-10 w-auto" subtitle="Teacher Portal" collapsed={!sidebarOpen} />
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 overflow-y-auto">
+        <nav className="flex-1 p-3 overflow-hidden">
           <ul className="space-y-1">
             {menuItems.map((item) => {
               const Icon = item.icon;

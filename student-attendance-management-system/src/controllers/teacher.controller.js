@@ -9,6 +9,7 @@ import {
     markAttendanceService,
     getAttendanceRecordsService,
     getAttendanceHistoryService,
+    updateAttendanceSessionService,
 } from '../services/teacher.service.js';
 import {
     createAttendanceSessionSchema,
@@ -77,4 +78,15 @@ export const getAttendanceHistory = asyncHandler(async (req, res) => {
         req.user.role === 'ADMIN',
     );
     res.status(200).json(new ApiResponse(200, history, 'Attendance history fetched'));
+});
+
+/* ---------- UPDATE ATTENDANCE SESSION ---------- */
+export const updateAttendanceSession = asyncHandler(async (req, res) => {
+    const session = await updateAttendanceSessionService(
+        req.user.teacher.id,
+        req.params.id,
+        req.body,
+        req.user.role === 'ADMIN',
+    );
+    res.status(200).json(new ApiResponse(200, session, 'Attendance session updated'));
 });

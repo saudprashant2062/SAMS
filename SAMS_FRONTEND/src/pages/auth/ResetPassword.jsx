@@ -2,11 +2,10 @@ import { useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import {
-  HiOutlineLockClosed,
-  HiOutlineEye,
-  HiOutlineEyeOff,
   HiOutlineCheckCircle,
 } from "react-icons/hi";
+import PasswordField from "../../components/common/PasswordField";
+import { isPasswordValid, validatePassword } from "../../utils/validation";
 import { resetPasswordWithToken } from "../../api/auth.api";
 
 const ResetPassword = () => {
@@ -48,10 +47,12 @@ const ResetPassword = () => {
       setError("Passwords do not match");
       return;
     }
-    if (formData.password.length < 8) {
-      setError("Password must be at least 8 characters");
+    
+    if (!isPasswordValid(validatePassword(formData.password))) {
+      setError("Please fulfill all password requirements");
       return;
     }
+
     resetPasswordMutation.mutate({ password: formData.password });
   };
 
@@ -149,91 +150,25 @@ const ResetPassword = () => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              className="block text-sm font-medium mb-1.5"
-              style={{ color: "var(--text-primary)" }}
-            >
-              New Password
-            </label>
-            <div className="relative">
-              <HiOutlineLockClosed
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5"
-                style={{ color: "var(--text-muted)" }}
-              />
-              <input
-                type={showPassword ? "text" : "password"}
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="Enter new password"
-                required
-                className="w-full pl-10 pr-10 py-2.5 rounded-lg text-sm outline-none transition-all"
-                style={{
-                  backgroundColor: "var(--bg-main)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-primary)",
-                }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--primary)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {showPassword ? (
-                  <HiOutlineEyeOff className="w-5 h-5" />
-                ) : (
-                  <HiOutlineEye className="w-5 h-5" />
-                )}
-              </button>
-            </div>
-          </div>
+          <PasswordField
+            label="New Password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="Enter new password"
+            required
+            showRequirements
+          />
 
-          <div>
-            <label
-              className="block text-sm font-medium mb-1.5"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Confirm Password
-            </label>
-            <div className="relative">
-              <HiOutlineLockClosed
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5"
-                style={{ color: "var(--text-muted)" }}
-              />
-              <input
-                type={showConfirmPassword ? "text" : "password"}
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                placeholder="Confirm new password"
-                required
-                className="w-full pl-10 pr-10 py-2.5 rounded-lg text-sm outline-none transition-all"
-                style={{
-                  backgroundColor: "var(--bg-main)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-primary)",
-                }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--primary)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {showConfirmPassword ? (
-                  <HiOutlineEyeOff className="w-5 h-5" />
-                ) : (
-                  <HiOutlineEye className="w-5 h-5" />
-                )}
-              </button>
-            </div>
-          </div>
+          <PasswordField
+            label="Confirm Password"
+            name="confirmPassword"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            placeholder="Confirm new password"
+            required
+            error={formData.confirmPassword && formData.password !== formData.confirmPassword ? "Passwords do not match" : ""}
+          />
 
           <button
             type="submit"

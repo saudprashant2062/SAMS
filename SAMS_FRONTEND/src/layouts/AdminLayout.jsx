@@ -21,6 +21,7 @@ import {
   HiOutlineKey,
   HiOutlineCalendar,
 } from "react-icons/hi";
+import Logo from "../components/Logo";
 
 const AdminLayout = () => {
   const dispatch = useDispatch();
@@ -71,7 +72,7 @@ const AdminLayout = () => {
 
   return (
     <div
-      className="min-h-screen flex"
+      className="h-screen flex overflow-hidden"
       style={{ backgroundColor: "var(--bg-main)" }}
     >
       {/* Mobile Sidebar Overlay */}
@@ -92,25 +93,14 @@ const AdminLayout = () => {
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="p-4 border-b border-white/10 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: "var(--primary-hover)" }}
-              >
-                <HiOutlineAcademicCap className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-white font-semibold text-base">Academia</h1>
-                <p className="text-white/60 text-xs">Admin Portal</p>
-              </div>
-            </div>
+            <Logo className="h-8 w-auto" subtitle="Admin Portal" />
             <button onClick={closeMobileMenu} className="text-white/70 p-1">
               <HiOutlineX className="w-6 h-6" />
             </button>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-3 overflow-y-auto">
+          <nav className="flex-1 p-3 overflow-hidden">
             <ul className="space-y-1">
               {menuItems.map((item) => {
                 const Icon = item.icon;
@@ -165,26 +155,14 @@ const AdminLayout = () => {
         className={`${sidebarOpen ? "w-64" : "w-20"} hidden md:flex transition-all duration-300 flex-col`}
         style={{ backgroundColor: "var(--primary)" }}
       >
-        {/* Logo */}
-        <div className="p-4 border-b border-white/10">
+        <div className="p-4 border-b border-white/10 flex items-center justify-center">
           <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: "var(--primary-hover)" }}
-            >
-              <HiOutlineAcademicCap className="w-6 h-6 text-white" />
-            </div>
-            {sidebarOpen && (
-              <div>
-                <h1 className="text-white font-semibold text-base">Academia</h1>
-                <p className="text-white/60 text-xs">Admin Portal</p>
-              </div>
-            )}
+             <Logo className="h-10 w-auto" subtitle="Admin Portal" collapsed={!sidebarOpen} />
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 overflow-y-auto">
+        <nav className="flex-1 p-3 overflow-hidden">
           <ul className="space-y-1">
             {menuItems.map((item) => {
               const Icon = item.icon;
@@ -269,14 +247,6 @@ const AdminLayout = () => {
             >
               <HiOutlineMenu className="w-5 h-5" />
             </button>
-            <div className="md:hidden">
-              <span
-                className="font-semibold text-sm"
-                style={{ color: "var(--primary)" }}
-              >
-                Academia
-              </span>
-            </div>
           </div>
           <div className="flex items-center gap-2 md:gap-4">
             <span

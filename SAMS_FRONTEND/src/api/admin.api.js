@@ -245,11 +245,11 @@ export const deleteSemester = (id) => {
 };
 
 /* =====================================================
-   SECTIONS
+   SECTIONS (Updated with Batch Context)
 ===================================================== */
 
 /**
- * Create Section
+ * Create Section (with batch_id)
  * POST /admin/sections
  */
 export const createSection = (data) => {
@@ -257,7 +257,7 @@ export const createSection = (data) => {
 };
 
 /**
- * Get All Sections
+ * Get All Sections (with filters)
  * GET /admin/sections
  */
 export const getAllSections = (params = {}) => {
@@ -286,6 +286,30 @@ export const updateSection = (id, data) => {
  */
 export const deleteSection = (id) => {
   return axiosInstance.delete(`/admin/sections/${id}`);
+};
+
+/**
+ * Archive Section
+ * POST /admin/sections/:id/archive
+ */
+export const archiveSection = (id) => {
+  return axiosInstance.post(`/admin/sections/${id}/archive`);
+};
+
+/**
+ * Restore Section
+ * POST /admin/sections/:id/restore
+ */
+export const restoreSection = (id) => {
+  return axiosInstance.post(`/admin/sections/${id}/restore`);
+};
+
+/**
+ * Get Archived Sections
+ * GET /admin/sections/archived
+ */
+export const getArchivedSections = (params = {}) => {
+  return axiosInstance.get("/admin/sections/archived", { params });
 };
 
 /**

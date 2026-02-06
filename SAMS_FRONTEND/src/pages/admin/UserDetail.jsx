@@ -61,6 +61,7 @@ const UserDetail = () => {
         "Roll No",
         "Registration No",
         "Section",
+        "Batch",
         "Department",
         "Semester",
       );
@@ -68,6 +69,7 @@ const UserDetail = () => {
         user.student.roll_no || "",
         user.student.registration_no || "",
         user.student.section?.name || "",
+        user.student.batch?.name || "",
         user.student.section?.semester?.department?.name || "",
         user.student.section?.semester?.number || "",
       );
@@ -431,7 +433,7 @@ const UserDetail = () => {
                       className="text-sm font-medium"
                       style={{ color: "var(--text-primary)" }}
                     >
-                      {user.student.registration_no}
+                      {user.student.registration_no || "N/A"}
                     </p>
                   </div>
                 </div>
@@ -454,6 +456,28 @@ const UserDetail = () => {
                       style={{ color: "var(--text-primary)" }}
                     >
                       {user.student.section?.name || "N/A"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="p-2 rounded-lg"
+                    style={{ backgroundColor: "#E0E7FF" }}
+                  >
+                    <HiOutlineAcademicCap className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <p
+                      className="text-xs"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Batch
+                    </p>
+                    <p
+                      className="text-sm font-medium"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {user.student.batch?.name || "N/A"}
                     </p>
                   </div>
                 </div>

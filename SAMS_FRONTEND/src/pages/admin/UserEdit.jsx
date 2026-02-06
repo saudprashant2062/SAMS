@@ -34,7 +34,7 @@ const UserEdit = () => {
 
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: getAllSections,
+    queryFn: () => getAllSections(),
     select: (res) => res.data.data,
     enabled: user?.role === "STUDENT",
   });

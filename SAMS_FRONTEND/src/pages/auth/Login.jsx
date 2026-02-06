@@ -4,10 +4,8 @@ import { useMutation } from "@tanstack/react-query";
 import { useDispatch } from "react-redux";
 import {
   HiOutlineMail,
-  HiOutlineLockClosed,
-  HiOutlineEye,
-  HiOutlineEyeOff,
 } from "react-icons/hi";
+import PasswordField from "../../components/common/PasswordField";
 import { login } from "../../api/auth.api";
 import { setCredentials } from "../../features/auth/auth.slice";
 
@@ -71,6 +69,9 @@ const Login = () => {
       ) {
         errorMessage =
           "Unable to connect to server. Please check your internet connection.";
+      } else if (error.response?.status === 429) {
+        errorMessage =
+          "Too many login attempts. Please try again after 15 minutes.";
       } else if (error.response?.status === 401) {
         errorMessage = "Invalid email or password. Please try again.";
       } else if (error.response?.status === 403) {
@@ -176,48 +177,14 @@ const Login = () => {
           </div>
 
           {/* Password */}
-          <div>
-            <label
-              className="block text-sm font-medium mb-1.5"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Password
-            </label>
-            <div className="relative">
-              <HiOutlineLockClosed
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5"
-                style={{ color: "var(--text-muted)" }}
-              />
-              <input
-                type={showPassword ? "text" : "password"}
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="Enter your password"
-                required
-                className="w-full pl-10 pr-10 py-2.5 rounded-lg text-sm outline-none transition-all"
-                style={{
-                  backgroundColor: "var(--bg-main)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-primary)",
-                }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--primary)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--text-muted)" }}
-              >
-                {showPassword ? (
-                  <HiOutlineEyeOff className="w-5 h-5" />
-                ) : (
-                  <HiOutlineEye className="w-5 h-5" />
-                )}
-              </button>
-            </div>
-          </div>
+          <PasswordField
+            label="Password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="Enter your password"
+            required
+          />
 
           {/* Forgot Password */}
           <div className="text-right">

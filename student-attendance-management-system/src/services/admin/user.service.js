@@ -5,6 +5,7 @@ import cloudinary from '../../config/cloudinary.js';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import csv from 'csv-parser';
+import xlsx from 'xlsx';
 import { bulkStudentRowSchema, bulkTeacherRowSchema } from '../../validators/user.validator.js';
 import { userBasicSelect } from '../../utils/prisma.selects.js';
 
@@ -32,7 +33,7 @@ const generateStudentId = async (sectionId, batchId) => {
     if (!batch) throw new ApiError(404, 'Batch not found');
 
     const deptCode = section.department.name.substring(0, 4).toUpperCase();
-    const year = batch.year.toString().slice(-2);
+    const year = batch.start_year.toString().slice(-2);
     const count = await prisma.student.count({
         where: { batch_id: batchId, is_deleted: false },
     });
@@ -50,8 +51,6 @@ const generateTeacherId = async () => {
 /* ---------- Upload photo to Cloudinary ---------- */
 const uploadPhoto = async filePath => {
     try {
-        console.log('Uploading photo to Cloudinary:', filePath);
-
         const result = await cloudinary.uploader.upload(filePath, {
             folder: 'profile_photos',
             use_filename: true,
@@ -59,25 +58,23 @@ const uploadPhoto = async filePath => {
             timeout: 60000, // 60 second timeout
         });
 
-        console.log('Cloudinary upload successful:', result.secure_url);
-
         // Delete local file after successful upload
         try {
             await fsPromises.unlink(filePath);
-            console.log('Local file deleted:', filePath);
         } catch (unlinkErr) {
-            console.error('Error deleting local file after upload:', unlinkErr.message);
+            // File deletion failed but upload succeeded, log for cleanup
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Error deleting local file after upload:', unlinkErr.message);
+            }
         }
 
         return result.secure_url;
     } catch (error) {
-        console.error('Cloudinary upload error:', error.message);
-
         // Try to delete file even if upload failed
         try {
             await fsPromises.unlink(filePath);
         } catch (unlinkError) {
-            console.error('Error deleting temp file:', unlinkError.message);
+            // Ignore cleanup errors
         }
         throw new ApiError(500, 'Failed to upload photo. Please try again.');
     }
@@ -191,14 +188,36 @@ const uploadPhotoFromUrl = async photoUrl => {
         });
         return result.secure_url;
     } catch (error) {
-        console.error('Photo upload failed:', error.message);
-        return null; // Return null if upload fails, don't break bulk creation
+        // Return null if upload fails, don't break bulk creation
+        return null;
     }
 };
 
-/* ---------- Bulk Create Students via CSV ---------- */
-export const bulkCreateStudentsCSVService = async (filePath, defaultSectionId, defaultBatchId) => {
+/* ---------- Parse CSV or Excel file and return array of rows ---------- */
+const parseFile = async filePath => {
     const results = [];
+    const extension = filePath.split('.').pop().toLowerCase();
+
+    if (extension === 'csv') {
+        return new Promise((resolve, reject) => {
+            fs.createReadStream(filePath)
+                .pipe(csv())
+                .on('data', row => results.push(row))
+                .on('end', () => resolve(results))
+                .on('error', err => reject(err));
+        });
+    } else if (extension === 'xlsx' || extension === 'xls') {
+        const workbook = xlsx.readFile(filePath);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        return xlsx.utils.sheet_to_json(worksheet);
+    } else {
+        throw new ApiError(400, 'Unsupported file format. Please use CSV or Excel (.xlsx, .xls)');
+    }
+};
+
+/* ---------- Bulk Create Students via CSV/Excel ---------- */
+export const bulkCreateStudentsCSVService = async (filePath, defaultSectionId, defaultBatchId) => {
     const errors = [];
 
     // Validate default section_id if provided
@@ -217,207 +236,236 @@ export const bulkCreateStudentsCSVService = async (filePath, defaultSectionId, d
         }
     }
 
-    return new Promise((resolve, reject) => {
-        fs.createReadStream(filePath)
-            .pipe(csv())
-            .on('data', row => results.push(row))
-            .on('end', async () => {
-                const createdStudents = [];
+    // Parse the file (CSV or Excel)
+    let rows;
+    try {
+        rows = await parseFile(filePath);
+    } catch (err) {
+        throw new ApiError(400, `Failed to parse file: ${err.message}`);
+    }
 
-                for (const [index, row] of results.entries()) {
-                    try {
-                        // Use default section_id if provided, otherwise use from CSV
-                        const section_id = defaultSectionId || row.section_id;
-                        if (!section_id) {
-                            errors.push({
-                                row: index + 1,
-                                error: 'Section is required for each student',
-                            });
-                            continue;
+    if (!rows || rows.length === 0) {
+        throw new ApiError(400, 'The file is empty or contains no valid data.');
+    }
+
+    const createdStudents = [];
+
+    for (const [index, row] of rows.entries()) {
+        try {
+            // Normalize row keys to lowercase
+            const normalizedRow = {};
+            Object.keys(row).forEach(key => {
+                normalizedRow[key.toLowerCase().trim()] = row[key];
+            });
+
+            // Use default section_id if provided, otherwise use from CSV
+            const section_id = defaultSectionId || normalizedRow.section_id;
+            if (!section_id) {
+                errors.push({
+                    row: index + 1,
+                    error: 'Section is required for each student',
+                });
+                continue;
+            }
+
+            // Use default batch_id if provided, otherwise use from CSV
+            const batch_id = defaultBatchId || normalizedRow.batch_id;
+            if (!batch_id) {
+                errors.push({
+                    row: index + 1,
+                    error: 'Batch is required for each student',
+                });
+                continue;
+            }
+
+            // Create modified row with section_id and batch_id
+            const rowWithData = { ...normalizedRow, section_id, batch_id };
+
+            // Validate row using Zod
+            const parsed = bulkStudentRowSchema.safeParse(rowWithData);
+            if (!parsed.success) {
+                const errorMessages = Object.entries(parsed.error.format())
+                    .filter(([key]) => key !== '_errors')
+                    .map(([field, err]) => {
+                        if (err._errors && err._errors.length > 0) {
+                            return `${field}: ${err._errors.join(', ')}`;
                         }
+                        return `${field}: Invalid value`;
+                    })
+                    .join('; ');
+                errors.push({
+                    row: index + 1,
+                    error: errorMessages || 'Validation failed',
+                });
+                continue;
+            }
 
-                        // Use default batch_id if provided, otherwise use from CSV
-                        const batch_id = defaultBatchId || row.batch_id;
-                        if (!batch_id) {
-                            errors.push({
-                                row: index + 1,
-                                error: 'Batch is required for each student',
-                            });
-                            continue;
-                        }
+            const { fullname, email, password, roll_no, registration_no, phone_number, photo_url } =
+                parsed.data;
 
-                        // Create modified row with section_id and batch_id
-                        const rowWithData = { ...row, section_id, batch_id };
+            // Check for existing email
+            if (await prisma.user.findUnique({ where: { email } })) {
+                errors.push({
+                    row: index + 1,
+                    error: `Email "${email}" is already registered`,
+                });
+                continue;
+            }
 
-                        // Validate row using Zod
-                        const parsed = bulkStudentRowSchema.safeParse(rowWithData);
-                        if (!parsed.success) {
-                            const errorMessages = Object.entries(parsed.error.format())
-                                .filter(([key]) => key !== '_errors')
-                                .map(([field, err]) => `${field}: ${err._errors?.join(', ')}`)
-                                .join('; ');
-                            errors.push({
-                                row: index + 1,
-                                error: errorMessages || 'Validation failed',
-                            });
-                            continue;
-                        }
+            // Check for existing phone
+            if (await prisma.user.findUnique({ where: { phone_number } })) {
+                errors.push({
+                    row: index + 1,
+                    error: `Phone number "${phone_number}" is already registered`,
+                });
+                continue;
+            }
 
-                        const {
-                            fullname,
-                            email,
-                            password,
+            const hashedPassword = await hashPassword(password);
+            const stdId = await generateStudentId(section_id, batch_id);
+
+            // Upload photo to Cloudinary if provided
+            const uploadedPhotoUrl = await uploadPhotoFromUrl(photo_url);
+
+            const student = await prisma.user.create({
+                data: {
+                    fullname,
+                    email,
+                    password: hashedPassword,
+                    role: 'STUDENT',
+                    photo_url: uploadedPhotoUrl,
+                    phone_number,
+                    student: {
+                        create: {
+                            stdId,
                             roll_no,
                             registration_no,
-                            phone_number,
-                            photo_url,
-                        } = parsed.data;
-
-                        // Check for existing email
-                        if (await prisma.user.findUnique({ where: { email } })) {
-                            errors.push({
-                                row: index + 1,
-                                error: `Email "${email}" is already registered`,
-                            });
-                            continue;
-                        }
-
-                        // Check for existing phone
-                        if (await prisma.user.findUnique({ where: { phone_number } })) {
-                            errors.push({
-                                row: index + 1,
-                                error: `Phone number "${phone_number}" is already registered`,
-                            });
-                            continue;
-                        }
-
-                        const hashedPassword = await hashPassword(password);
-                        const stdId = await generateStudentId(section_id, batch_id);
-
-                        // Upload photo to Cloudinary if provided
-                        const uploadedPhotoUrl = await uploadPhotoFromUrl(photo_url);
-
-                        const student = await prisma.user.create({
-                            data: {
-                                fullname,
-                                email,
-                                password: hashedPassword,
-                                role: 'STUDENT',
-                                photo_url: uploadedPhotoUrl,
-                                phone_number,
-                                student: {
-                                    create: {
-                                        stdId,
-                                        roll_no,
-                                        registration_no,
-                                        section_id,
-                                        batch_id,
-                                    },
-                                },
-                            },
-                            select: userResponseSelect,
-                        });
-
-                        createdStudents.push(student);
-                    } catch (err) {
-                        errors.push({ row: index + 1, error: err.message });
-                    }
-                }
-
-                // Delete CSV after processing
-                try {
-                    await fsPromises.unlink(filePath);
-                } catch (unlinkErr) {
-                    console.error('Error deleting CSV file:', unlinkErr.message);
-                }
-
-                resolve({ created: createdStudents, errors });
-            })
-            .on('error', async err => {
-                // Clean up CSV on error
-                try {
-                    await fsPromises.unlink(filePath);
-                } catch (unlinkErr) {
-                    console.error('Error deleting CSV file:', unlinkErr.message);
-                }
-                reject(err);
+                            section_id,
+                            batch_id,
+                        },
+                    },
+                },
+                select: userResponseSelect,
             });
-    });
+
+            createdStudents.push(student);
+        } catch (err) {
+            errors.push({ row: index + 1, error: err.message });
+        }
+    }
+
+    // Delete file after processing
+    try {
+        await fsPromises.unlink(filePath);
+    } catch (unlinkErr) {
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Error deleting file:', unlinkErr.message);
+        }
+    }
+
+    return { created: createdStudents, errors };
 };
 
 /* ---------- Bulk Create Teachers via CSV ---------- */
 export const bulkCreateTeachersCSVService = async filePath => {
-    const results = [];
     const errors = [];
 
-    return new Promise((resolve, reject) => {
-        fs.createReadStream(filePath)
-            .pipe(csv())
-            .on('data', row => results.push(row))
-            .on('end', async () => {
-                const createdTeachers = [];
+    // Parse the file (CSV or Excel)
+    let rows;
+    try {
+        rows = await parseFile(filePath);
+    } catch (err) {
+        throw new ApiError(400, `Failed to parse file: ${err.message}`);
+    }
 
-                for (const [index, row] of results.entries()) {
-                    try {
-                        // Validate row using Zod
-                        const parsed = bulkTeacherRowSchema.safeParse(row);
-                        if (!parsed.success) {
-                            errors.push({ row: index + 1, error: parsed.error.format() });
-                            continue;
-                        }
+    if (!rows || rows.length === 0) {
+        throw new ApiError(400, 'The file is empty or contains no valid data.');
+    }
 
-                        const { fullname, email, password, designation, phone_number, photo_url } =
-                            parsed.data;
+    const createdTeachers = [];
 
-                        if (await prisma.user.findUnique({ where: { email } })) {
-                            errors.push({ row: index + 1, error: 'Email already exists' });
-                            continue;
-                        }
-
-                        const hashedPassword = await hashPassword(password);
-                        const teacherId = await generateTeacherId();
-
-                        // Upload photo to Cloudinary if provided
-                        const uploadedPhotoUrl = await uploadPhotoFromUrl(photo_url);
-
-                        const teacher = await prisma.user.create({
-                            data: {
-                                fullname,
-                                email,
-                                password: hashedPassword,
-                                role: 'TEACHER',
-                                photo_url: uploadedPhotoUrl,
-                                phone_number,
-                                teacher: { create: { teacherId, designation } },
-                            },
-                            select: userResponseSelect,
-                        });
-
-                        createdTeachers.push(teacher);
-                    } catch (err) {
-                        errors.push({ row: index + 1, error: err.message });
-                    }
-                }
-
-                // Delete CSV after processing
-                try {
-                    await fsPromises.unlink(filePath);
-                } catch (unlinkErr) {
-                    console.error('Error deleting CSV file:', unlinkErr.message);
-                }
-
-                resolve({ created: createdTeachers, errors });
-            })
-            .on('error', async err => {
-                // Clean up CSV on error
-                try {
-                    await fsPromises.unlink(filePath);
-                } catch (unlinkErr) {
-                    console.error('Error deleting CSV file:', unlinkErr.message);
-                }
-                reject(err);
+    for (const [index, row] of rows.entries()) {
+        try {
+            // Normalize row keys to lowercase
+            const normalizedRow = {};
+            Object.keys(row).forEach(key => {
+                normalizedRow[key.toLowerCase().trim()] = row[key];
             });
-    });
+
+            // Validate row using Zod
+            const parsed = bulkTeacherRowSchema.safeParse(normalizedRow);
+            if (!parsed.success) {
+                const errorMessages = Object.entries(parsed.error.format())
+                    .filter(([key]) => key !== '_errors')
+                    .map(([field, err]) => {
+                        if (err._errors && err._errors.length > 0) {
+                            return `${field}: ${err._errors.join(', ')}`;
+                        }
+                        return `${field}: Invalid value`;
+                    })
+                    .join('; ');
+                errors.push({
+                    row: index + 1,
+                    error: errorMessages || 'Validation failed',
+                });
+                continue;
+            }
+
+            const { fullname, email, password, designation, phone_number, photo_url } = parsed.data;
+
+            // Check for existing email
+            if (await prisma.user.findUnique({ where: { email } })) {
+                errors.push({
+                    row: index + 1,
+                    error: `Email "${email}" is already registered`,
+                });
+                continue;
+            }
+
+            // Check for existing phone
+            if (await prisma.user.findUnique({ where: { phone_number } })) {
+                errors.push({
+                    row: index + 1,
+                    error: `Phone number "${phone_number}" is already registered`,
+                });
+                continue;
+            }
+
+            const hashedPassword = await hashPassword(password);
+            const teacherId = await generateTeacherId();
+
+            // Upload photo to Cloudinary if provided
+            const uploadedPhotoUrl = await uploadPhotoFromUrl(photo_url);
+
+            const teacher = await prisma.user.create({
+                data: {
+                    fullname,
+                    email,
+                    password: hashedPassword,
+                    role: 'TEACHER',
+                    photo_url: uploadedPhotoUrl,
+                    phone_number,
+                    teacher: { create: { teacherId, designation } },
+                },
+                select: userResponseSelect,
+            });
+
+            createdTeachers.push(teacher);
+        } catch (err) {
+            errors.push({ row: index + 1, error: err.message });
+        }
+    }
+
+    // Delete file after processing
+    try {
+        await fsPromises.unlink(filePath);
+    } catch (unlinkErr) {
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Error deleting file:', unlinkErr.message);
+        }
+    }
+
+    return { created: createdTeachers, errors };
 };
 
 /* ===============================
@@ -463,6 +511,7 @@ export const getUserByIdService = async id => {
         include: {
             student: {
                 include: {
+                    batch: true,
                     section: {
                         include: {
                             department: true,
@@ -665,12 +714,20 @@ export const deleteAdminService = async id => {
 
     if (user.role !== 'ADMIN') throw new ApiError(400, 'User is not an admin');
 
-    const deletedAdmin = await prisma.user.update({
-        where: { id },
-        data: { is_active: false },
+    // Hard delete cascade for user
+    await prisma.$transaction(async tx => {
+        // Delete tokens and resets
+        await tx.refreshToken.deleteMany({ where: { userId: id } });
+        await tx.passwordReset.deleteMany({ where: { userId: id } });
+        
+        // Delete activity logs where this user is the actor
+        await tx.activityLog.deleteMany({ where: { user_id: id } });
+
+        // Finally delete the user
+        return await tx.user.delete({ where: { id } });
     });
 
-    return deletedAdmin;
+    return { message: 'Admin user and all related data deleted permanently' };
 };
 
 /* ===============================
@@ -692,12 +749,14 @@ export const getDashboardStatsService = async () => {
         }),
     ]);
 
-    return {
+    const stats = {
         totalStudents,
         totalTeachers,
         totalDepartments,
         todaySessions,
     };
+
+    return stats;
 };
 
 /* ===============================

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,10 +12,10 @@ import {
   HiOutlineUser,
   HiOutlineEye,
 } from "react-icons/hi";
+import PasswordField from "../../components/common/PasswordField";
+import { isPasswordValid, validatePassword } from "../../utils/validation";
 import {
   getAllUsers,
-  getAllStudents,
-  getAllTeachers,
   createStudent,
   createTeacher,
   createAdmin,
@@ -25,6 +25,7 @@ import {
   bulkCreateTeachers,
   getAllSections,
   getAllBatches,
+  getAllDepartments,
 } from "../../api/admin.api";
 import AlertMessage from "../../components/common/AlertMessage";
 import ConfirmModal from "../../components/common/ConfirmModal";
@@ -37,6 +38,7 @@ const Users = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState("student"); // student, teacher, admin, bulk-student, bulk-teacher
   const [bulkFile, setBulkFile] = useState(null);
+  const [bulkDepartmentId, setBulkDepartmentId] = useState(""); // For bulk student upload
   const [bulkSectionId, setBulkSectionId] = useState(""); // For bulk student upload
   const [bulkBatchId, setBulkBatchId] = useState(""); // For bulk student upload
   const [studentPhoto, setStudentPhoto] = useState(null);
@@ -47,6 +49,7 @@ const Users = () => {
   const [adminPhotoPreview, setAdminPhotoPreview] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [bulkResult, setBulkResult] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     user: null,
@@ -93,15 +96,33 @@ const Users = () => {
 
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: getAllSections,
+    queryFn: () => getAllSections(),
     select: (res) => res.data.data,
   });
 
   const { data: batches } = useQuery({
     queryKey: ["batches"],
-    queryFn: getAllBatches,
+    queryFn: () => getAllBatches(),
     select: (res) => res.data.data,
   });
+
+  const { data: departments } = useQuery({
+    queryKey: ["departments"],
+    queryFn: () => getAllDepartments(),
+    select: (res) => res.data.data,
+  });
+
+  // Filter sections based on selected department
+  const filteredSections = useMemo(() => {
+    if (!bulkDepartmentId || !sections) return sections || [];
+    return sections.filter(section => section.department_id === bulkDepartmentId);
+  }, [bulkDepartmentId, sections]);
+
+  // Filter batches based on selected department
+  const filteredBatches = useMemo(() => {
+    if (!bulkDepartmentId || !batches) return batches || [];
+    return batches.filter(batch => batch.department_id === bulkDepartmentId);
+  }, [bulkDepartmentId, batches]);
 
   // Mutations
   const createStudentMutation = useMutation({
@@ -159,12 +180,37 @@ const Users = () => {
     mutationFn: bulkCreateStudents,
     onSuccess: (res) => {
       queryClient.invalidateQueries(["users"]);
-      const count = res.data?.data?.length || 0;
-      setSuccessMessage(`${count} students created successfully!`);
+      const result = res.data?.data;
+      const createdCount = result?.created?.length || 0;
+      const errorsCount = result?.errors?.length || 0;
+
+      if (createdCount > 0) {
+        setSuccessMessage(
+          `${createdCount} student(s) created successfully!${errorsCount > 0 ? ` ${errorsCount} failed.` : ""}`,
+        );
+      } else if (errorsCount > 0) {
+        setErrorMessage(
+          `${errorsCount} students failed to create. Download error CSV for details.`,
+        );
+      } else {
+        setErrorMessage(
+          "No students were created. Please check the file format.",
+        );
+      }
+
+      // Store result for download
+      if (result?.errors?.length > 0) {
+        setBulkResult(result);
+      }
+
       setTimeout(() => {
-        closeModal();
-        setSuccessMessage("");
-      }, 2000);
+        if (createdCount > 0 && errorsCount === 0) {
+          closeModal();
+          setSuccessMessage("");
+          setErrorMessage("");
+          setBulkResult(null);
+        }
+      }, 5000);
     },
     onError: (error) => {
       setErrorMessage(
@@ -177,12 +223,37 @@ const Users = () => {
     mutationFn: bulkCreateTeachers,
     onSuccess: (res) => {
       queryClient.invalidateQueries(["users"]);
-      const count = res.data?.data?.length || 0;
-      setSuccessMessage(`${count} teachers created successfully!`);
+      const result = res.data?.data;
+      const createdCount = result?.created?.length || 0;
+      const errorsCount = result?.errors?.length || 0;
+
+      if (createdCount > 0) {
+        setSuccessMessage(
+          `${createdCount} teacher(s) created successfully!${errorsCount > 0 ? ` ${errorsCount} failed.` : ""}`,
+        );
+      } else if (errorsCount > 0) {
+        setErrorMessage(
+          `${errorsCount} teachers failed to create. Download error CSV for details.`,
+        );
+      } else {
+        setErrorMessage(
+          "No teachers were created. Please check the file format.",
+        );
+      }
+
+      // Store result for download
+      if (result?.errors?.length > 0) {
+        setBulkResult(result);
+      }
+
       setTimeout(() => {
-        closeModal();
-        setSuccessMessage("");
-      }, 2000);
+        if (createdCount > 0 && errorsCount === 0) {
+          closeModal();
+          setSuccessMessage("");
+          setErrorMessage("");
+          setBulkResult(null);
+        }
+      }, 5000);
     },
     onError: (error) => {
       setErrorMessage(
@@ -271,6 +342,10 @@ const Users = () => {
 
   const handleStudentSubmit = (e) => {
     e.preventDefault();
+    if (!isPasswordValid(validatePassword(studentForm.password))) {
+      setErrorMessage("Please fulfill all password requirements");
+      return;
+    }
     const formData = new FormData();
     Object.keys(studentForm).forEach((key) => {
       if (studentForm[key]) formData.append(key, studentForm[key]);
@@ -281,6 +356,10 @@ const Users = () => {
 
   const handleTeacherSubmit = (e) => {
     e.preventDefault();
+    if (!isPasswordValid(validatePassword(teacherForm.password))) {
+      setErrorMessage("Please fulfill all password requirements");
+      return;
+    }
     const formData = new FormData();
     Object.keys(teacherForm).forEach((key) => {
       if (teacherForm[key]) formData.append(key, teacherForm[key]);
@@ -291,6 +370,10 @@ const Users = () => {
 
   const handleAdminSubmit = (e) => {
     e.preventDefault();
+    if (!isPasswordValid(validatePassword(adminForm.password))) {
+      setErrorMessage("Please fulfill all password requirements");
+      return;
+    }
     const formData = new FormData();
     Object.keys(adminForm).forEach((key) => {
       if (adminForm[key]) formData.append(key, adminForm[key]);
@@ -343,6 +426,27 @@ const Users = () => {
     setConfirmModal({ isOpen: false, user: null });
   };
 
+  const downloadErrorCSV = () => {
+    if (!bulkResult?.errors) return;
+
+    const csvContent = [
+      ["Row", "Error"],
+      ...bulkResult.errors.map((error) => [error.row, error.error]),
+    ]
+      .map((row) => row.map((cell) => `"${cell}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "bulk_upload_errors.csv");
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const getRoleBadge = (role) => {
     const styles = {
       ADMIN: { bg: "#DBEAFE", color: "#1E3A8A" },
@@ -377,31 +481,34 @@ const Users = () => {
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => openModal("student")}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors"
             style={{ backgroundColor: "var(--primary)" }}
           >
             <HiOutlinePlus className="w-4 h-4" />
-            Add Student
+            <span className="hidden sm:inline">Add Student</span>
+            <span className="sm:hidden">Student</span>
           </button>
           <button
             onClick={() => openModal("teacher")}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors"
             style={{ backgroundColor: "#065F46" }}
           >
             <HiOutlinePlus className="w-4 h-4" />
-            Add Teacher
+            <span className="hidden sm:inline">Add Teacher</span>
+            <span className="sm:hidden">Teacher</span>
           </button>
           <button
             onClick={() => openModal("admin")}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors"
             style={{ backgroundColor: "#7C3AED" }}
           >
             <HiOutlinePlus className="w-4 h-4" />
-            Add Admin
+            <span className="hidden sm:inline">Add Admin</span>
+            <span className="sm:hidden">Admin</span>
           </button>
           <button
             onClick={() => openModal("bulk-student")}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-3 py-2 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
             style={{
               backgroundColor: "var(--bg-main)",
               color: "var(--text-primary)",
@@ -409,11 +516,12 @@ const Users = () => {
             }}
           >
             <HiOutlineUpload className="w-4 h-4" />
-            Bulk Students
+            <span className="hidden sm:inline">Bulk Students</span>
+            <span className="sm:hidden">Bulk S</span>
           </button>
           <button
             onClick={() => openModal("bulk-teacher")}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-3 py-2 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
             style={{
               backgroundColor: "var(--bg-main)",
               color: "var(--text-primary)",
@@ -421,20 +529,21 @@ const Users = () => {
             }}
           >
             <HiOutlineUpload className="w-4 h-4" />
-            Bulk Teachers
+            <span className="hidden sm:inline">Bulk Teachers</span>
+            <span className="sm:hidden">Bulk T</span>
           </button>
         </div>
       </div>
 
       {/* Filters */}
       <div
-        className="rounded-xl p-4 shadow-sm flex flex-wrap gap-4"
+        className="rounded-xl p-4 shadow-sm flex flex-wrap gap-4 items-end"
         style={{
           backgroundColor: "var(--bg-card)",
           border: "1px solid var(--border)",
         }}
       >
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-50">
           <HiOutlineSearch
             className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
             style={{ color: "var(--text-muted)" }}
@@ -444,7 +553,7 @@ const Users = () => {
             placeholder="Search users..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
+            className="w-full pl-9 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none"
             style={{
               backgroundColor: "var(--bg-main)",
               border: "1px solid var(--border)",
@@ -452,15 +561,15 @@ const Users = () => {
             }}
           />
         </div>
-        <select
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="px-4 py-2 rounded-lg text-sm outline-none"
-          style={{
-            backgroundColor: "var(--bg-main)",
-            border: "1px solid var(--border)",
-            color: "var(--text-primary)",
-          }}
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-35 disabled:opacity-50"
+            style={{
+              backgroundColor: "var(--bg-main)",
+              border: "1px solid var(--border)",
+              color: "var(--text-primary)",
+            }}
         >
           <option value="">All Roles</option>
           <option value="ADMIN">Admin</option>
@@ -713,7 +822,7 @@ const Users = () => {
                     }
                     required
                     minLength={3}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -735,7 +844,7 @@ const Users = () => {
                       setStudentForm({ ...studentForm, email: e.target.value })
                     }
                     required
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -743,33 +852,15 @@ const Users = () => {
                     }}
                   />
                 </div>
-                <div>
-                  <label
-                    className="block text-sm font-medium mb-1"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    Password *
-                  </label>
-                  <input
-                    type="password"
-                    value={studentForm.password}
-                    onChange={(e) =>
-                      setStudentForm({
-                        ...studentForm,
-                        password: e.target.value,
-                      })
-                    }
-                    required
-                    minLength={6}
-                    placeholder="Min 6 chars, 1 upper, 1 lower, 1 number, 1 special"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{
-                      backgroundColor: "var(--bg-main)",
-                      border: "1px solid var(--border)",
-                      color: "var(--text-primary)",
-                    }}
-                  />
-                </div>
+                <PasswordField
+                  label="Password"
+                  name="password"
+                  value={studentForm.password}
+                  onChange={(e) => setStudentForm({ ...studentForm, password: e.target.value })}
+                  placeholder="Create a password"
+                  required
+                  showRequirements
+                />
                 <div>
                   <label
                     className="block text-sm font-medium mb-1"
@@ -788,7 +879,7 @@ const Users = () => {
                     }
                     required
                     placeholder="98XXXXXXXX"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -813,7 +904,7 @@ const Users = () => {
                       })
                     }
                     required
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -837,13 +928,46 @@ const Users = () => {
                         registration_no: e.target.value,
                       })
                     }
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
                       color: "var(--text-primary)",
                     }}
                   />
+                </div>
+                <div>
+                  <label
+                    className="block text-sm font-medium mb-1"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    Batch *
+                  </label>
+                  <select
+                    value={studentForm.batch_id}
+                    onChange={(e) =>
+                      setStudentForm({
+                        ...studentForm,
+                        batch_id: e.target.value,
+                        section_id: "", // Reset section when batch changes
+                      })
+                    }
+                    required
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
+                    style={{
+                      backgroundColor: "var(--bg-main)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    <option value="">Select Batch</option>
+                    {batches?.map((batch) => (
+                      <option key={batch.id} value={batch.id}>
+                        {batch.department?.name} - {batch.start_year} Batch
+                        {batch.name ? ` (${batch.name})` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label
@@ -861,51 +985,36 @@ const Users = () => {
                       })
                     }
                     required
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    disabled={!studentForm.batch_id}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
                       color: "var(--text-primary)",
                     }}
                   >
-                    <option value="">Select Section</option>
-                    {sections?.map((section) => (
-                      <option key={section.id} value={section.id}>
-                        {section.name} - {section.department?.name} (Sem{" "}
-                        {section.semester?.number})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    className="block text-sm font-medium mb-1"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    Batch *
-                  </label>
-                  <select
-                    value={studentForm.batch_id}
-                    onChange={(e) =>
-                      setStudentForm({
-                        ...studentForm,
-                        batch_id: e.target.value,
+                    <option value="">
+                      {studentForm.batch_id
+                        ? "Select Section"
+                        : "Select Batch First"}
+                    </option>
+                    {sections
+                      ?.filter((section) => {
+                        const selectedBatch = batches?.find(
+                          (b) => b.id === studentForm.batch_id,
+                        );
+                        return (
+                          selectedBatch &&
+                          section.department_id ===
+                            selectedBatch.department_id &&
+                          section.batch_id === studentForm.batch_id
+                        );
                       })
-                    }
-                    required
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{
-                      backgroundColor: "var(--bg-main)",
-                      border: "1px solid var(--border)",
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    <option value="">Select Batch</option>
-                    {batches?.map((batch) => (
-                      <option key={batch.id} value={batch.id}>
-                        {batch.name} ({batch.year})
-                      </option>
-                    ))}
+                      .map((section) => (
+                        <option key={section.id} value={section.id}>
+                          {section.name} (Sem {section.semester?.number})
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -927,7 +1036,7 @@ const Users = () => {
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       color: "var(--text-secondary)",
@@ -939,7 +1048,7 @@ const Users = () => {
                   <button
                     type="submit"
                     disabled={isPending}
-                    className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                    className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors disabled:opacity-50"
                     style={{ backgroundColor: "var(--primary)" }}
                   >
                     {isPending ? "Creating..." : "Create Student"}
@@ -1020,7 +1129,7 @@ const Users = () => {
                     }
                     required
                     minLength={3}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -1042,7 +1151,7 @@ const Users = () => {
                       setTeacherForm({ ...teacherForm, email: e.target.value })
                     }
                     required
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -1050,33 +1159,15 @@ const Users = () => {
                     }}
                   />
                 </div>
-                <div>
-                  <label
-                    className="block text-sm font-medium mb-1"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    Password *
-                  </label>
-                  <input
-                    type="password"
-                    value={teacherForm.password}
-                    onChange={(e) =>
-                      setTeacherForm({
-                        ...teacherForm,
-                        password: e.target.value,
-                      })
-                    }
-                    required
-                    minLength={6}
-                    placeholder="Min 6 chars, 1 upper, 1 lower, 1 number, 1 special"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{
-                      backgroundColor: "var(--bg-main)",
-                      border: "1px solid var(--border)",
-                      color: "var(--text-primary)",
-                    }}
-                  />
-                </div>
+                <PasswordField
+                  label="Password"
+                  name="password"
+                  value={teacherForm.password}
+                  onChange={(e) => setTeacherForm({ ...teacherForm, password: e.target.value })}
+                  placeholder="Create a password"
+                  required
+                  showRequirements
+                />
                 <div>
                   <label
                     className="block text-sm font-medium mb-1"
@@ -1095,7 +1186,7 @@ const Users = () => {
                     }
                     required
                     placeholder="98XXXXXXXX"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -1122,7 +1213,7 @@ const Users = () => {
                     required
                     minLength={2}
                     placeholder="e.g., Professor, Lecturer"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -1149,7 +1240,7 @@ const Users = () => {
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       color: "var(--text-secondary)",
@@ -1161,7 +1252,7 @@ const Users = () => {
                   <button
                     type="submit"
                     disabled={isPending}
-                    className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                    className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors disabled:opacity-50"
                     style={{ backgroundColor: "#065F46" }}
                   >
                     {isPending ? "Creating..." : "Create Teacher"}
@@ -1239,7 +1330,7 @@ const Users = () => {
                     }
                     required
                     minLength={3}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -1261,7 +1352,7 @@ const Users = () => {
                       setAdminForm({ ...adminForm, email: e.target.value })
                     }
                     required
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -1269,30 +1360,15 @@ const Users = () => {
                     }}
                   />
                 </div>
-                <div>
-                  <label
-                    className="block text-sm font-medium mb-1"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    Password *
-                  </label>
-                  <input
-                    type="password"
-                    value={adminForm.password}
-                    onChange={(e) =>
-                      setAdminForm({ ...adminForm, password: e.target.value })
-                    }
-                    required
-                    minLength={6}
-                    placeholder="Min 6 chars, 1 upper, 1 lower, 1 number, 1 special"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{
-                      backgroundColor: "var(--bg-main)",
-                      border: "1px solid var(--border)",
-                      color: "var(--text-primary)",
-                    }}
-                  />
-                </div>
+                <PasswordField
+                  label="Password"
+                  name="password"
+                  value={adminForm.password}
+                  onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
+                  placeholder="Create a password"
+                  required
+                  showRequirements
+                />
                 <div>
                   <label
                     className="block text-sm font-medium mb-1"
@@ -1309,9 +1385,8 @@ const Users = () => {
                         phone_number: e.target.value,
                       })
                     }
-                    required
                     placeholder="98XXXXXXXX"
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -1338,7 +1413,7 @@ const Users = () => {
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       color: "var(--text-secondary)",
@@ -1350,7 +1425,7 @@ const Users = () => {
                   <button
                     type="submit"
                     disabled={isPending}
-                    className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                    className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors disabled:opacity-50"
                     style={{ backgroundColor: "#7C3AED" }}
                   >
                     {isPending ? "Creating..." : "Create Admin"}
@@ -1369,11 +1444,16 @@ const Users = () => {
                         className="block text-sm font-medium mb-1"
                         style={{ color: "var(--text-primary)" }}
                       >
-                        Select Section *
+                        Select Department *
                       </label>
                       <select
-                        value={bulkSectionId}
-                        onChange={(e) => setBulkSectionId(e.target.value)}
+                        value={bulkDepartmentId}
+                        onChange={(e) => {
+                          setBulkDepartmentId(e.target.value);
+                          // Reset section and batch when department changes
+                          setBulkSectionId("");
+                          setBulkBatchId("");
+                        }}
                         required
                         className="w-full px-3 py-2 rounded-lg text-sm outline-none"
                         style={{
@@ -1382,11 +1462,53 @@ const Users = () => {
                           color: "var(--text-primary)",
                         }}
                       >
-                        <option value="">Select Section</option>
-                        {sections?.map((section) => (
+                        <option value="">Select Department</option>
+                        {departments?.map((dept) => (
+                          <option key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p
+                        className="text-xs mt-1"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        Select the department first to filter sections and batches
+                      </p>
+                    </div>
+                    <div>
+                      <label
+                        className="block text-sm font-medium mb-1"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        Select Section *
+                      </label>
+                      <select
+                        value={bulkSectionId}
+                        onChange={(e) => {
+                          setBulkSectionId(e.target.value);
+                          // Reset batch when section changes
+                          setBulkBatchId("");
+                        }}
+                        required
+                        disabled={!bulkDepartmentId}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: "var(--bg-main)",
+                          border: "1px solid var(--border)",
+                          color: "var(--text-primary)",
+                        }}
+                      >
+                        <option value="">
+                          {!bulkDepartmentId 
+                            ? "Select department first" 
+                            : filteredSections?.length === 0
+                            ? "No sections available"
+                            : "Select Section"}
+                        </option>
+                        {filteredSections?.map((section) => (
                           <option key={section.id} value={section.id}>
-                            {section.name} - {section.department?.name} (Sem{" "}
-                            {section.semester?.number})
+                            {section.name} - Sem {section.semester?.number} - {section.batch?.name}
                           </option>
                         ))}
                       </select>
@@ -1408,17 +1530,24 @@ const Users = () => {
                         value={bulkBatchId}
                         onChange={(e) => setBulkBatchId(e.target.value)}
                         required
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                        disabled={!bulkDepartmentId}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{
                           backgroundColor: "var(--bg-main)",
                           border: "1px solid var(--border)",
                           color: "var(--text-primary)",
                         }}
                       >
-                        <option value="">Select Batch</option>
-                        {batches?.map((batch) => (
+                        <option value="">
+                          {!bulkDepartmentId 
+                            ? "Select department first" 
+                            : filteredBatches?.length === 0 
+                            ? "No batches available"
+                            : "Select Batch"}
+                        </option>
+                        {filteredBatches?.map((batch) => (
                           <option key={batch.id} value={batch.id}>
-                            {batch.name} ({batch.year})
+                            {batch.name} ({batch.start_year}-{batch.end_year})
                           </option>
                         ))}
                       </select>
@@ -1426,7 +1555,9 @@ const Users = () => {
                         className="text-xs mt-1"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        All students in the CSV will be assigned to this batch
+                        {bulkDepartmentId 
+                          ? `Showing batches from ${departments?.find(d => d.id === bulkDepartmentId)?.name || 'selected department'} only`
+                          : "All students in the CSV will be assigned to this batch"}
                       </p>
                     </div>
                   </>
@@ -1469,7 +1600,7 @@ const Users = () => {
                     accept=".csv"
                     onChange={(e) => setBulkFile(e.target.files[0])}
                     required
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none disabled:opacity-50"
                     style={{
                       backgroundColor: "var(--bg-main)",
                       border: "1px solid var(--border)",
@@ -1492,6 +1623,37 @@ const Users = () => {
                   <AlertMessage type="success" message={successMessage} />
                 )}
 
+                {/* Result Summary */}
+                {bulkResult && (
+                  <div
+                    className="flex items-center justify-between p-3 rounded-lg text-sm"
+                    style={{ backgroundColor: "var(--primary-subtle)" }}
+                  >
+                    <div className="flex items-center gap-4">
+                      <span style={{ color: "var(--status-present)" }}>
+                        ✓ {bulkResult.created?.length || 0} created
+                      </span>
+                      {bulkResult.errors?.length > 0 && (
+                        <span style={{ color: "var(--danger)" }}>
+                          ✗ {bulkResult.errors.length} failed
+                        </span>
+                      )}
+                    </div>
+                    {bulkResult.errors?.length > 0 && (
+                      <button
+                        onClick={downloadErrorCSV}
+                        className="text-xs px-2 py-1 rounded transition-colors"
+                        style={{
+                          backgroundColor: "var(--danger)",
+                          color: "white",
+                        }}
+                      >
+                        Download Errors
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
@@ -1508,9 +1670,16 @@ const Users = () => {
                   <button
                     type="submit"
                     disabled={isPending || !bulkFile}
-                    className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
-                    style={{ backgroundColor: "var(--primary)" }}
+                    className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    style={{
+                      backgroundColor: isPending
+                        ? "var(--status-present)"
+                        : "var(--primary)",
+                    }}
                   >
+                    {isPending && (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    )}
                     {isPending ? "Uploading..." : "Upload"}
                   </button>
                 </div>

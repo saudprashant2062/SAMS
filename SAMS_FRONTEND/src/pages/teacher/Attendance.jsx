@@ -7,12 +7,15 @@ import {
   HiOutlineCalendar,
   HiOutlineUserGroup,
   HiOutlineSave,
+  HiOutlinePencil,
 } from "react-icons/hi";
 import {
   getTeacherAssignments,
   markAttendance,
   getAttendanceHistory,
   createAttendanceSession,
+  updateAttendanceSession,
+  getAttendanceRecords,
 } from "../../api/teacher.api";
 import AlertMessage from "../../components/common/AlertMessage";
 
@@ -27,10 +30,16 @@ const TeacherAttendance = () => {
   const [attendance, setAttendance] = useState({});
   const [activeTab, setActiveTab] = useState("mark"); // mark | history
   const [alertMessage, setAlertMessage] = useState({ type: "", message: "" });
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
+  const [editForm, setEditForm] = useState({ session_date: "" });
+  const [isRecordEditModalOpen, setIsRecordEditModalOpen] = useState(false);
+  const [editingRecordSession, setEditingRecordSession] = useState(null);
+  const [tempAttendance, setTempAttendance] = useState({});
 
   const { data: assignments } = useQuery({
     queryKey: ["teacherAssignments"],
-    queryFn: getTeacherAssignments,
+    queryFn: () => getTeacherAssignments(),
     select: (res) => res.data.data,
   });
 
@@ -78,6 +87,44 @@ const TeacherAttendance = () => {
         message: error.response?.data?.message || "Failed to create session",
       });
       setIsSubmitting(false);
+    },
+  });
+
+  const updateSessionMutation = useMutation({
+    mutationFn: ({ id, data }) => updateAttendanceSession(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["attendanceHistory"]);
+      setIsEditModalOpen(false);
+      setEditingSession(null);
+      setAlertMessage({
+        type: "success",
+        message: "Session date updated successfully!",
+      });
+    },
+    onError: (error) => {
+      setAlertMessage({
+        type: "error",
+        message: error.response?.data?.message || "Failed to update session",
+      });
+    },
+  });
+
+  const recordMarkMutation = useMutation({
+    mutationFn: markAttendance,
+    onSuccess: () => {
+      queryClient.invalidateQueries(["attendanceHistory"]);
+      setIsRecordEditModalOpen(false);
+      setEditingRecordSession(null);
+      setAlertMessage({
+        type: "success",
+        message: "Attendance records updated successfully!",
+      });
+    },
+    onError: (error) => {
+      setAlertMessage({
+        type: "error",
+        message: error.response?.data?.message || "Failed to update records",
+      });
     },
   });
 
@@ -154,11 +201,67 @@ const TeacherAttendance = () => {
     }
   };
 
-  const getStatusButton = (studentId, status, icon, label, color) => {
-    const isActive = attendance[studentId] === status;
+  const openEditModal = (session) => {
+    setEditingSession(session);
+    setEditForm({
+      session_date: new Date(session.date).toISOString().split("T")[0],
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateSessionDate = (e) => {
+    e.preventDefault();
+    updateSessionMutation.mutate({
+      id: editingSession.id,
+      data: {
+        session_date: new Date(editForm.session_date).toISOString(),
+      },
+    });
+  };
+
+  const openEditRecords = async (session) => {
+    try {
+      const res = await getAttendanceRecords(session.id);
+      const records = res.data.data;
+      const initialAttendance = {};
+      records.forEach((r) => {
+        initialAttendance[r.student_id] = r.status;
+      });
+      setTempAttendance(initialAttendance);
+      setEditingRecordSession({ ...session, records });
+      setIsRecordEditModalOpen(true);
+    } catch (error) {
+      console.error("Failed to fetch records:", error);
+      setAlertMessage({ type: "error", message: "Failed to load records" });
+    }
+  };
+
+  const handleTempStatusChange = (studentId, status) => {
+    setTempAttendance((prev) => ({ ...prev, [studentId]: status }));
+  };
+
+  const handleUpdateRecords = () => {
+    const records = Object.entries(tempAttendance).map(([studentId, status]) => ({
+      student_id: studentId,
+      status,
+    }));
+    recordMarkMutation.mutate({
+      session_id: editingRecordSession.id,
+      records,
+    });
+  };
+
+  const getStatusButton = (studentId, status, icon, label, color, currentStatus) => {
+    const isActive = (currentStatus || attendance[studentId]) === status;
     return (
       <button
-        onClick={() => handleStatusChange(studentId, status)}
+        onClick={() => {
+          if (currentStatus !== undefined) {
+             handleTempStatusChange(studentId, status);
+          } else {
+             handleStatusChange(studentId, status);
+          }
+        }}
         className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
           isActive ? "ring-2 ring-offset-1" : "opacity-60 hover:opacity-100"
         }`}
@@ -217,7 +320,7 @@ const TeacherAttendance = () => {
             <select
               value={selectedAssignment}
               onChange={(e) => setSelectedAssignment(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg text-sm outline-none"
+              className="w-full px-2 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm outline-none"
               style={{
                 backgroundColor: "var(--bg-main)",
                 border: "1px solid var(--border)",
@@ -250,7 +353,7 @@ const TeacherAttendance = () => {
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
+                  className="w-full pl-9 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
@@ -267,7 +370,7 @@ const TeacherAttendance = () => {
       <div className="flex gap-2">
         <button
           onClick={() => setActiveTab("mark")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors`}
+          className={`flex-1 sm:flex-initial px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors`}
           style={{
             backgroundColor:
               activeTab === "mark" ? "var(--primary)" : "transparent",
@@ -279,7 +382,7 @@ const TeacherAttendance = () => {
         </button>
         <button
           onClick={() => setActiveTab("history")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors`}
+          className={`flex-1 sm:flex-initial px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors`}
           style={{
             backgroundColor:
               activeTab === "history" ? "var(--primary)" : "transparent",
@@ -321,17 +424,17 @@ const TeacherAttendance = () => {
             <div className="flex gap-2">
               <button
                 onClick={() => handleMarkAll("PRESENT")}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                className="px-2 py-1 md:px-3 md:py-1.5 rounded-lg text-[10px] md:text-xs font-medium text-white"
                 style={{ backgroundColor: "var(--status-present)" }}
               >
-                Mark All Present
+                All Present
               </button>
               <button
                 onClick={() => handleMarkAll("ABSENT")}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                className="px-2 py-1 md:px-3 md:py-1.5 rounded-lg text-[10px] md:text-xs font-medium text-white"
                 style={{ backgroundColor: "var(--status-absent)" }}
               >
-                Mark All Absent
+                All Absent
               </button>
             </div>
           </div>
@@ -446,7 +549,7 @@ const TeacherAttendance = () => {
             <button
               onClick={handleSubmit}
               disabled={isSubmitting || !students?.length || isFutureDate()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-white font-medium transition-colors disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg text-xs md:text-sm text-white font-medium transition-colors disabled:opacity-50"
               style={{ backgroundColor: "var(--primary)" }}
             >
               <HiOutlineSave className="w-5 h-5" />
@@ -491,6 +594,12 @@ const TeacherAttendance = () => {
                   style={{ color: "var(--primary)" }}
                 >
                   Total
+                </th>
+                <th
+                  className="px-4 py-3 text-right text-xs font-medium"
+                  style={{ color: "var(--primary)" }}
+                >
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -545,6 +654,26 @@ const TeacherAttendance = () => {
                     >
                       {record.totalCount || 0}
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openEditModal(record)}
+                          className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                          title="Edit Date"
+                          style={{ color: "var(--primary)" }}
+                        >
+                          <HiOutlineCalendar className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => openEditRecords(record)}
+                          className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                          title="Edit Attendance"
+                          style={{ color: "var(--status-present)" }}
+                        >
+                          <HiOutlinePencil className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -575,6 +704,185 @@ const TeacherAttendance = () => {
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
             Choose a teaching assignment to mark or view attendance
           </p>
+        </div>
+      )}
+
+      {/* Edit Session Modal */}
+      {isEditModalOpen && editingSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="w-full max-w-md rounded-xl p-6 shadow-lg"
+            style={{ backgroundColor: "var(--bg-card)" }}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3
+                className="text-lg font-semibold"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Edit Session Date
+              </h3>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-2 rounded-lg hover:bg-gray-100"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <HiOutlineX className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateSessionDate} className="space-y-4">
+              <div>
+                <label
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Session Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={editForm.session_date}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, session_date: e.target.value })
+                  }
+                  max={new Date().toISOString().split("T")[0]}
+                  className="w-full px-4 py-2 rounded-lg border outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: "white",
+                    borderColor: "var(--border)",
+                    color: "var(--text-primary)",
+                  }}
+                />
+              </div>
+
+              {alertMessage.type === "error" && alertMessage.message && (
+                <div
+                  className="p-3 rounded-lg text-sm"
+                  style={{
+                    backgroundColor: "var(--danger-subtle)",
+                    color: "var(--danger)",
+                  }}
+                >
+                  {alertMessage.message}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="flex-1 px-4 py-2 rounded-lg font-medium border transition-colors"
+                  style={{
+                    backgroundColor: "white",
+                    borderColor: "var(--border)",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateSessionMutation.isPending}
+                  className="flex-1 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50"
+                  style={{ backgroundColor: "var(--primary)" }}
+                >
+                  {updateSessionMutation.isPending
+                    ? "Updating..."
+                    : "Update Date"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Records Modal */}
+      {isRecordEditModalOpen && editingRecordSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-xl p-6 shadow-lg"
+            style={{ backgroundColor: "var(--bg-card)" }}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3
+                  className="text-lg font-semibold"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Edit Attendance Records
+                </h3>
+                <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  {formatDate(editingRecordSession.date)} • {selectedAssignmentData?.subject?.name}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsRecordEditModalOpen(false)}
+                className="p-2 rounded-lg hover:bg-gray-100"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <HiOutlineX className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+                {editingRecordSession.records?.map((record) => (
+                  <div key={record.student_id} className="py-3 flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>
+                        {record.student?.user?.fullname}
+                      </p>
+                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        Roll No: {record.student?.roll_no}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                       {getStatusButton(
+                        record.student_id,
+                        "PRESENT",
+                        <HiOutlineCheck className="w-3.5 h-3.5" />,
+                        "Present",
+                        "var(--status-present)",
+                        tempAttendance[record.student_id]
+                      )}
+                      {getStatusButton(
+                        record.student_id,
+                        "ABSENT",
+                        <HiOutlineX className="w-3.5 h-3.5" />,
+                        "Absent",
+                        "var(--status-absent)",
+                        tempAttendance[record.student_id]
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {alertMessage.type === "error" && alertMessage.message && (
+                <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "var(--danger-subtle)", color: "var(--danger)" }}>
+                  {alertMessage.message}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+                <button
+                  onClick={() => setIsRecordEditModalOpen(false)}
+                  className="flex-1 px-4 py-2 rounded-lg font-medium border transition-colors"
+                  style={{ backgroundColor: "white", borderColor: "var(--border)", color: "var(--text-secondary)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateRecords}
+                  disabled={recordMarkMutation.isPending}
+                  className="flex-1 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50"
+                  style={{ backgroundColor: "var(--primary)" }}
+                >
+                  {recordMarkMutation.isPending ? "Updating..." : "Update Attendance"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

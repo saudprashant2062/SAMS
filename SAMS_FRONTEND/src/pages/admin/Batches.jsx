@@ -9,14 +9,13 @@ import {
 } from "react-icons/hi";
 import {
   getAllBatches,
+  getAllDepartments,
   createBatch,
   updateBatch,
   deleteBatch,
 } from "../../api/admin.api";
 import AlertMessage from "../../components/common/AlertMessage";
 import ConfirmModal from "../../components/common/ConfirmModal";
-import { batchSchema } from "../../schemas/admin.schema";
-import useFormValidation from "../../hooks/useFormValidation";
 
 const getCurrentBSYear = () => {
   const today = new Date();
@@ -33,8 +32,10 @@ const Batches = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({
-    year: getCurrentBSYear(),
     name: "",
+    department_id: "",
+    start_year: getCurrentBSYear(),
+    end_year: getCurrentBSYear() + 4,
   });
   const [errorMessage, setErrorMessage] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState({
@@ -45,7 +46,13 @@ const Batches = () => {
 
   const { data: batches, isLoading } = useQuery({
     queryKey: ["batches"],
-    queryFn: getAllBatches,
+    queryFn: () => getAllBatches(),
+    select: (res) => res.data.data,
+  });
+
+  const { data: departments } = useQuery({
+    queryKey: ["departments"],
+    queryFn: () => getAllDepartments(),
     select: (res) => res.data.data,
   });
 
@@ -85,14 +92,18 @@ const Batches = () => {
     if (item) {
       setEditingItem(item);
       setFormData({
-        year: item.year,
         name: item.name || "",
+        department_id: item.department_id || "",
+        start_year: item.start_year || getCurrentBSYear(),
+        end_year: item.end_year || getCurrentBSYear() + 4,
       });
     } else {
       setEditingItem(null);
       setFormData({
-        year: getCurrentBSYear(),
         name: "",
+        department_id: "",
+        start_year: getCurrentBSYear(),
+        end_year: getCurrentBSYear() + 4,
       });
     }
     setIsModalOpen(true);
@@ -102,8 +113,10 @@ const Batches = () => {
     setIsModalOpen(false);
     setEditingItem(null);
     setFormData({
-      year: getCurrentBSYear(),
       name: "",
+      department_id: "",
+      start_year: getCurrentBSYear(),
+      end_year: getCurrentBSYear() + 4,
     });
     setErrorMessage("");
   };
@@ -111,27 +124,41 @@ const Batches = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Convert year to number and validate
-    const yearValue = formData.year;
-    const yearNum =
-      typeof yearValue === "string" ? parseInt(yearValue, 10) : yearValue;
+    if (!formData.department_id) {
+      setErrorMessage("Please select a department");
+      return;
+    }
 
-    if (
-      yearValue === "" ||
-      yearValue === null ||
-      yearValue === undefined ||
-      isNaN(yearNum)
-    ) {
-      setErrorMessage("Please enter a valid year");
+    const startYear =
+      typeof formData.start_year === "string"
+        ? parseInt(formData.start_year, 10)
+        : formData.start_year;
+    const endYear =
+      typeof formData.end_year === "string"
+        ? parseInt(formData.end_year, 10)
+        : formData.end_year;
+
+    if (!startYear || isNaN(startYear)) {
+      setErrorMessage("Please enter a valid start year");
+      return;
+    }
+
+    if (!endYear || isNaN(endYear)) {
+      setErrorMessage("Please enter a valid end year");
+      return;
+    }
+
+    if (endYear <= startYear) {
+      setErrorMessage("End year must be greater than start year");
       return;
     }
 
     const data = {
-      year: yearNum,
-      name: formData.name || null,
+      name: formData.name || `${startYear} Batch`,
+      department_id: formData.department_id,
+      start_year: startYear,
+      end_year: endYear,
     };
-
-    console.log("Submitting data:", data); // Debug log
 
     if (editingItem) {
       updateMutation.mutate({ id: editingItem.id, data });
@@ -158,7 +185,7 @@ const Batches = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1
             className="text-xl font-semibold"
@@ -172,7 +199,7 @@ const Batches = () => {
         </div>
         <button
           onClick={() => openModal()}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-white text-xs md:text-sm font-medium transition-colors w-full sm:w-auto justify-center"
           style={{ backgroundColor: "var(--primary)" }}
         >
           <HiOutlinePlus className="w-4 h-4" />
@@ -196,13 +223,19 @@ const Batches = () => {
                   className="px-4 py-3 text-left text-xs font-medium"
                   style={{ color: "var(--primary)" }}
                 >
-                  Year (BS)
+                  Duration (BS)
                 </th>
                 <th
                   className="px-4 py-3 text-left text-xs font-medium"
                   style={{ color: "var(--primary)" }}
                 >
                   Name
+                </th>
+                <th
+                  className="px-4 py-3 text-left text-xs font-medium"
+                  style={{ color: "var(--primary)" }}
+                >
+                  Department
                 </th>
                 <th
                   className="px-4 py-3 text-left text-xs font-medium"
@@ -225,7 +258,7 @@ const Batches = () => {
               {isLoading ? (
                 <tr>
                   <td
-                    colSpan="4"
+                    colSpan="5"
                     className="px-4 py-8 text-center text-sm"
                     style={{ color: "var(--text-muted)" }}
                   >
@@ -235,7 +268,7 @@ const Batches = () => {
               ) : batches?.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="4"
+                    colSpan="5"
                     className="px-4 py-8 text-center text-sm"
                     style={{ color: "var(--text-muted)" }}
                   >
@@ -254,7 +287,7 @@ const Batches = () => {
                           className="w-4 h-4"
                           style={{ color: "var(--primary)" }}
                         />
-                        {item.year}
+                        {item.start_year} - {item.end_year}
                       </div>
                     </td>
                     <td
@@ -262,6 +295,12 @@ const Batches = () => {
                       style={{ color: "var(--text-secondary)" }}
                     >
                       {item.name || "—"}
+                    </td>
+                    <td
+                      className="px-4 py-3 text-sm"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
+                      {item.department?.name || "—"}
                     </td>
                     <td
                       className="px-4 py-3 text-sm"
@@ -320,32 +359,87 @@ const Batches = () => {
                   className="block text-sm font-medium mb-1"
                   style={{ color: "var(--text-primary)" }}
                 >
-                  Year (BS) *
+                  Department *
                 </label>
-                <input
-                  type="number"
-                  value={formData.year}
+                <select
+                  value={formData.department_id}
                   onChange={(e) =>
-                    setFormData({ ...formData, year: e.target.value })
+                    setFormData({ ...formData, department_id: e.target.value })
                   }
                   required
-                  min="2070"
-                  max="2100"
-                  placeholder="e.g., 2082"
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     border: "1px solid var(--border)",
                     color: "var(--text-primary)",
                   }}
-                />
+                >
+                  <option value="">Select Department</option>
+                  {departments?.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label
+                    className="block text-sm font-medium mb-1"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    Start Year (BS) *
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.start_year}
+                    onChange={(e) =>
+                      setFormData({ ...formData, start_year: e.target.value })
+                    }
+                    required
+                    min="2070"
+                    max="2150"
+                    placeholder="e.g., 2082"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none"
+                    style={{
+                      backgroundColor: "var(--bg-main)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    className="block text-sm font-medium mb-1"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    End Year (BS) *
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.end_year}
+                    onChange={(e) =>
+                      setFormData({ ...formData, end_year: e.target.value })
+                    }
+                    required
+                    min="2070"
+                    max="2150"
+                    placeholder="e.g., 2086"
+                    className="w-full px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none"
+                    style={{
+                      backgroundColor: "var(--bg-main)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-primary)",
+                    }}
+                  />
+                </div>
               </div>
               <div>
                 <label
                   className="block text-sm font-medium mb-1"
                   style={{ color: "var(--text-primary)" }}
                 >
-                  Name (Optional)
+                  Name
                 </label>
                 <input
                   type="text"
@@ -361,12 +455,6 @@ const Batches = () => {
                     color: "var(--text-primary)",
                   }}
                 />
-                <p
-                  className="text-xs mt-1"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Optional display name for the batch
-                </p>
               </div>
 
               {/* Error Message */}
@@ -382,7 +470,7 @@ const Batches = () => {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors"
                   style={{
                     backgroundColor: "var(--bg-main)",
                     color: "var(--text-secondary)",
@@ -396,7 +484,7 @@ const Batches = () => {
                   disabled={
                     createMutation.isPending || updateMutation.isPending
                   }
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                  className="flex-1 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors disabled:opacity-50"
                   style={{ backgroundColor: "var(--primary)" }}
                 >
                   {createMutation.isPending || updateMutation.isPending

@@ -286,3 +286,57 @@ export const getAttendanceHistoryService = async (teacher_id, assignment_id, isA
         };
     });
 };
+// ...existing code...
+
+/* ---------- UPDATE ATTENDANCE SESSION ---------- */
+export const updateAttendanceSessionService = async (teacher_id, session_id, data, isAdmin = false) => {
+    const session = await prisma.attendanceSession.findUnique({
+        where: { id: session_id },
+        include: {
+            records: true,
+            teaching_assignment: true,
+        },
+    });
+
+    if (!session || session.is_deleted) {
+        throw new ApiError(404, 'Attendance session not found');
+    }
+
+    // Verify access
+    if (!isAdmin && session.teaching_assignment.teacher_id !== teacher_id) {
+        throw new ApiError(403, 'Not authorized to update this session');
+    }
+
+    if (data.session_date) {
+        const newDate = new Date(data.session_date);
+
+        // Prevent duplicate sessions for the same assignment on the same day when updating
+        const startOfDay = new Date(newDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(newDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const existingSession = await prisma.attendanceSession.findFirst({
+            where: {
+                teaching_assignment_id: session.teaching_assignment_id,
+                session_date: {
+                    gte: startOfDay,
+                    lte: endOfDay,
+                },
+                id: { not: session_id },
+                is_deleted: false,
+            },
+        });
+
+        if (existingSession) {
+            throw new ApiError(400, 'An attendance session already exists for this subject on this date');
+        }
+    }
+
+    return prisma.attendanceSession.update({
+        where: { id: session_id },
+        data: {
+            session_date: data.session_date ? new Date(data.session_date) : undefined,
+        },
+    });
+};

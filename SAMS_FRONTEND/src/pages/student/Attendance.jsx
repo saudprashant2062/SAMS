@@ -189,7 +189,7 @@ const StudentAttendance = () => {
             onChange={(e) =>
               setFilters({ ...filters, subjectId: e.target.value })
             }
-            className="px-4 py-2 rounded-lg text-sm outline-none min-w-[180px]"
+            className="px-2 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-[150px] md:min-w-[180px]"
             style={{
               backgroundColor: "var(--bg-main)",
               border: "1px solid var(--border)",

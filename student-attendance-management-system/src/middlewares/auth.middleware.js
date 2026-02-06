@@ -26,8 +26,9 @@ const authMiddleware = async (req, _res, next) => {
         }
 
         /* ===============================
-           3️⃣ Fetch user
+           3️⃣ Fetch user from database
         ================================ */
+        // Optimization: Fetch only necessary fields for auth/role checks
         const user = await prisma.user.findUnique({
             where: { id: decoded.id },
             select: {
@@ -35,11 +36,13 @@ const authMiddleware = async (req, _res, next) => {
                 email: true,
                 role: true,
                 is_active: true,
+                photo_url: true, // often needed for UI
+                fullname: true,
+                // Include lightweight relation IDs for role-based logic
                 student: {
                     select: {
                         id: true,
                         stdId: true,
-                        roll_no: true,
                         section_id: true,
                     },
                 },
@@ -47,7 +50,6 @@ const authMiddleware = async (req, _res, next) => {
                     select: {
                         id: true,
                         teacherId: true,
-                        designation: true,
                     },
                 },
             },
@@ -65,7 +67,7 @@ const authMiddleware = async (req, _res, next) => {
         }
 
         /* ===============================
-           5️⃣ Attach user
+           5️⃣ Attach user to request
         ================================ */
         req.user = user;
 
