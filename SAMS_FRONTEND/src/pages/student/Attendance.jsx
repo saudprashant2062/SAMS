@@ -19,7 +19,12 @@ const StudentAttendance = () => {
   const { data: attendanceData, isLoading } = useQuery({
     queryKey: ["studentAttendance", filters],
     queryFn: () => getStudentAttendance(filters),
-    select: (res) => res.data.data,
+    select: (res) => ({
+      records: res.data.data,
+      summary: res.data.summary,
+      subjects: res.data.subjects,
+      pagination: res.data.pagination,
+    }),
   });
 
   const getStatusBadge = (status) => {

@@ -72,8 +72,8 @@ export const getTeacherDashboard = () => {
  * Get Teacher's Teaching Assignments
  * GET /teachers/assignments
  */
-export const getTeacherAssignments = () => {
-  return axiosInstance.get("/teachers/assignments");
+export const getTeacherAssignments = (params = {}) => {
+  return axiosInstance.get("/teachers/assignments", { params });
 };
 
 /**
@@ -88,6 +88,8 @@ export const getStudentsByAssignment = (assignmentId) => {
  * Get Attendance History for Assignment
  * GET /teachers/attendance/history/:assignmentId
  */
-export const getAttendanceHistory = (assignmentId) => {
-  return axiosInstance.get(`/teachers/attendance/history/${assignmentId}`);
+export const getAttendanceHistory = (assignmentId, params = {}) => {
+  return axiosInstance.get(`/teachers/attendance/history/${assignmentId}`, {
+    params,
+  });
 };

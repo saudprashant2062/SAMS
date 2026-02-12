@@ -24,7 +24,21 @@ const SubjectDetail = () => {
   } = useQuery({
     queryKey: ["subject", id],
     queryFn: () => getSubjectById(id),
-    select: (res) => res.data.data,
+    select: (res) => {
+      const data = res.data.data;
+      return {
+        ...data,
+        teachingAssignments:
+          data.teaching_assignments || data.teachingAssignments || [],
+        _count: {
+          ...data._count,
+          teachingAssignments:
+            data._count?.teaching_assignments ??
+            data._count?.teachingAssignments ??
+            0,
+        },
+      };
+    },
   });
 
   const exportToCSV = () => {

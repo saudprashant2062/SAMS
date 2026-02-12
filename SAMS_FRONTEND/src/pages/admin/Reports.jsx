@@ -55,31 +55,31 @@ const AdminReports = () => {
 
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: () => getAllSections({ limit: 1000 }), // Get all for dropdowns
-    select: (res) => res.data?.data?.sections || res.data?.data || [],
+    queryFn: () => getAllSections({ limit: 100 }),
+    select: (res) => res.data.data,
   });
 
   const { data: subjects } = useQuery({
     queryKey: ["subjects"],
-    queryFn: () => getAllSubjects(),
+    queryFn: () => getAllSubjects({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: semesters } = useQuery({
     queryKey: ["semesters"],
-    queryFn: () => getAllSemesters(),
+    queryFn: () => getAllSemesters({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: () => getAllDepartments(),
+    queryFn: () => getAllDepartments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: batches } = useQuery({
     queryKey: ["batches"],
-    queryFn: () => getAllBatches(),
+    queryFn: () => getAllBatches({ limit: 100 }),
     select: (res) => res.data.data,
   });
 

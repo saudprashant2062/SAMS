@@ -21,6 +21,7 @@ import EmptyState, {
   EmptyStateCreate,
   EmptyStateFilter,
 } from "../../components/common/EmptyState";
+import Pagination from "../../components/common/Pagination";
 import {
   getAllSections,
   createSection,
@@ -64,38 +65,41 @@ const Sections = () => {
     semester_id: "",
     section_id: "",
   });
+  const [page, setPage] = useState(1);
 
   // Data queries
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: () => getAllDepartments(),
+    queryFn: () => getAllDepartments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: semesters } = useQuery({
     queryKey: ["semesters"],
-    queryFn: () => getAllSemesters(),
+    queryFn: () => getAllSemesters({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: batches } = useQuery({
     queryKey: ["batches"],
-    queryFn: () => getAllBatches(),
+    queryFn: () => getAllBatches({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   // Sections query with filters
-  const { data: sections, isLoading } = useQuery({
-    queryKey: ["sections", filters, showArchived],
+  const { data: sectionsData, isLoading } = useQuery({
+    queryKey: ["sections", filters, showArchived, page],
     queryFn: () => {
-      const params = { ...filters };
+      const params = { ...filters, page, limit: 20 };
       if (showArchived) {
         return getArchivedSections(params);
       }
       return getAllSections(params);
     },
-    select: (res) => res.data.data,
+    select: (res) => ({ data: res.data.data, pagination: res.data.pagination }),
   });
+  const sections = sectionsData?.data;
+  const sectionsPagination = sectionsData?.pagination;
 
   // Form state
   const [formData, setFormData] = useState({
@@ -413,7 +417,10 @@ const Sections = () => {
         {/* Cascading Filters */}
         <CascadingFilters
           value={filters}
-          onChange={setFilters}
+          onChange={(newFilters) => {
+            setFilters(newFilters);
+            setPage(1);
+          }}
           departments={departments || []}
           batches={batches || []}
           semesters={semesters || []}
@@ -601,6 +608,7 @@ const Sections = () => {
             </tbody>
           </table>
         </div>
+        <Pagination pagination={sectionsPagination} onPageChange={setPage} />
       </div>
 
       {/* Add/Edit Modal */}

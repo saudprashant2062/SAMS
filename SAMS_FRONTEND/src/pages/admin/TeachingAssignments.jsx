@@ -11,6 +11,7 @@ import {
 import ConfirmModal from "../../components/common/ConfirmModal";
 import CascadingFilters from "../../components/common/CascadingFilters";
 import TableSkeleton from "../../components/common/TableSkeleton";
+import Pagination from "../../components/common/Pagination";
 import {
   getAllTeachingAssignments,
   createTeachingAssignment,
@@ -49,49 +50,52 @@ const TeachingAssignments = () => {
     teacher_id: "",
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
 
   // Data queries
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: () => getAllDepartments(),
+    queryFn: () => getAllDepartments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: batches } = useQuery({
     queryKey: ["batches"],
-    queryFn: () => getAllBatches(),
+    queryFn: () => getAllBatches({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: semesters } = useQuery({
     queryKey: ["semesters"],
-    queryFn: () => getAllSemesters(),
+    queryFn: () => getAllSemesters({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: subjects } = useQuery({
     queryKey: ["subjects"],
-    queryFn: () => getAllSubjects(),
+    queryFn: () => getAllSubjects({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: () => getAllSections({ limit: 1000 }), // Get all for dropdowns
-    select: (res) => res.data?.data?.sections || res.data?.data || [],
+    queryFn: () => getAllSections({ limit: 100 }),
+    select: (res) => res.data.data,
   });
 
   const { data: teachers } = useQuery({
     queryKey: ["teachers"],
-    queryFn: () => getAllTeachers(),
-    select: (res) => res.data.data?.teachers || res.data.data,
-  });
-
-  const { data: assignments, isLoading } = useQuery({
-    queryKey: ["teachingAssignments", filters],
-    queryFn: () => getAllTeachingAssignments(filters),
+    queryFn: () => getAllTeachers({ limit: 100 }),
     select: (res) => res.data.data,
   });
+
+  const { data: assignmentsData, isLoading } = useQuery({
+    queryKey: ["teachingAssignments", filters, page],
+    queryFn: () => getAllTeachingAssignments({ ...filters, page, limit: 20 }),
+    select: (res) => ({ data: res.data.data, pagination: res.data.pagination }),
+  });
+  const assignments = assignmentsData?.data;
+  const assignmentsPagination = assignmentsData?.pagination;
 
   // Filter subjects based on selected filters
   const filteredSubjects = useMemo(() => {
@@ -303,7 +307,7 @@ const TeachingAssignments = () => {
           {/* Cascading Filters */}
           <CascadingFilters
             value={filters}
-            onChange={(newFilters) =>
+            onChange={(newFilters) => {
               setFilters({
                 ...filters,
                 ...newFilters,
@@ -311,8 +315,9 @@ const TeachingAssignments = () => {
                   newFilters.semester_id !== filters.semester_id
                     ? ""
                     : filters.subject_id,
-              })
-            }
+              });
+              setPage(1);
+            }}
             departments={departments || []}
             batches={batches || []}
             semesters={semesters || []}
@@ -445,7 +450,7 @@ const TeachingAssignments = () => {
                 <tr>
                   <td colSpan="5">
                     <div className="p-4">
-                        <TableSkeleton rows={8} columns={5} />
+                      <TableSkeleton rows={8} columns={5} />
                     </div>
                   </td>
                 </tr>
@@ -524,6 +529,7 @@ const TeachingAssignments = () => {
             </tbody>
           </table>
         </div>
+        <Pagination pagination={assignmentsPagination} onPageChange={setPage} />
       </div>
 
       {/* Modal */}

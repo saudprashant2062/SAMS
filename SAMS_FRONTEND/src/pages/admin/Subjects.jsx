@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,13 +9,16 @@ import {
   HiOutlineEye,
   HiOutlineSearch,
   HiOutlineFilter,
+  HiOutlineUpload,
 } from "react-icons/hi";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import AlertMessage from "../../components/common/AlertMessage";
 import {
   getAllSubjects,
   createSubject,
   updateSubject,
   deleteSubject,
+  bulkCreateSubjects,
   getAllDepartments,
   getAllSemesters,
 } from "../../api/admin.api";
@@ -37,6 +40,15 @@ const Subjects = () => {
     id: null,
   });
 
+  // Bulk upload states
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkDepartmentId, setBulkDepartmentId] = useState("");
+  const [bulkSemesterId, setBulkSemesterId] = useState("");
+  const [bulkResult, setBulkResult] = useState(null);
+  const [bulkError, setBulkError] = useState("");
+  const [bulkSuccess, setBulkSuccess] = useState("");
+
   // Filter & Search states
   const [search, setSearch] = useState("");
   const [filterDepartment, setFilterDepartment] = useState("");
@@ -44,19 +56,19 @@ const Subjects = () => {
 
   const { data: subjects, isLoading } = useQuery({
     queryKey: ["subjects"],
-    queryFn: () => getAllSubjects(),
+    queryFn: () => getAllSubjects({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: () => getAllDepartments(),
+    queryFn: () => getAllDepartments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: semesters } = useQuery({
     queryKey: ["semesters"],
-    queryFn: () => getAllSemesters(),
+    queryFn: () => getAllSemesters({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
@@ -120,6 +132,96 @@ const Subjects = () => {
     mutationFn: deleteSubject,
     onSuccess: () => queryClient.invalidateQueries(["subjects"]),
   });
+
+  const bulkMutation = useMutation({
+    mutationFn: bulkCreateSubjects,
+    onSuccess: (res) => {
+      const result = res.data.data;
+      setBulkResult(result);
+      queryClient.invalidateQueries(["subjects"]);
+      if (result.errorCount === 0) {
+        setBulkSuccess(`Successfully created ${result.successCount} subjects!`);
+      } else {
+        setBulkSuccess(
+          `Created ${result.successCount} of ${result.total} subjects. ${result.errorCount} failed.`,
+        );
+      }
+    },
+    onError: (error) => {
+      setBulkError(
+        error.response?.data?.message || "Failed to bulk create subjects",
+      );
+    },
+  });
+
+  // Filter semesters by selected bulk department
+  const filteredBulkSemesters = useMemo(() => {
+    if (!bulkDepartmentId || !semesters) return [];
+    return semesters
+      .filter((sem) => sem.department_id === bulkDepartmentId)
+      .sort((a, b) => a.number - b.number);
+  }, [bulkDepartmentId, semesters]);
+
+  const openBulkModal = () => {
+    setBulkFile(null);
+    setBulkDepartmentId("");
+    setBulkSemesterId("");
+    setBulkResult(null);
+    setBulkError("");
+    setBulkSuccess("");
+    setIsBulkModalOpen(true);
+  };
+
+  const closeBulkModal = () => {
+    setIsBulkModalOpen(false);
+    setBulkFile(null);
+    setBulkDepartmentId("");
+    setBulkSemesterId("");
+    setBulkResult(null);
+    setBulkError("");
+    setBulkSuccess("");
+  };
+
+  const handleBulkSubmit = (e) => {
+    e.preventDefault();
+    setBulkError("");
+    setBulkSuccess("");
+    setBulkResult(null);
+    if (!bulkFile) {
+      setBulkError("Please select a CSV or Excel file");
+      return;
+    }
+    if (!bulkDepartmentId) {
+      setBulkError("Please select a department");
+      return;
+    }
+    if (!bulkSemesterId) {
+      setBulkError("Please select a semester");
+      return;
+    }
+    const formData = new FormData();
+    formData.append("file", bulkFile);
+    formData.append("department_id", bulkDepartmentId);
+    formData.append("semester_id", bulkSemesterId);
+    bulkMutation.mutate(formData);
+  };
+
+  const downloadErrorCSV = () => {
+    if (!bulkResult?.errors) return;
+    const csvContent = [
+      ["Row", "Error"],
+      ...bulkResult.errors.map((e) => [e.row, e.error]),
+    ]
+      .map((row) => row.join(","))
+      .join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "subject_upload_errors.csv";
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   const openModal = (item = null) => {
     setErrorMessage("");
@@ -187,14 +289,28 @@ const Subjects = () => {
             Manage course subjects
           </p>
         </div>
-        <button
-          onClick={() => openModal()}
-          className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors w-full sm:w-auto justify-center"
-          style={{ backgroundColor: "var(--primary)" }}
-        >
-          <HiOutlinePlus className="w-4 h-4" />
-          <span>Add Subject</span>
-        </button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button
+            onClick={openBulkModal}
+            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex-1 sm:flex-none justify-center"
+            style={{
+              backgroundColor: "var(--bg-card)",
+              color: "var(--primary)",
+              border: "1px solid var(--primary)",
+            }}
+          >
+            <HiOutlineUpload className="w-4 h-4" />
+            <span>Bulk Upload</span>
+          </button>
+          <button
+            onClick={() => openModal()}
+            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors flex-1 sm:flex-none justify-center"
+            style={{ backgroundColor: "var(--primary)" }}
+          >
+            <HiOutlinePlus className="w-4 h-4" />
+            <span>Add Subject</span>
+          </button>
+        </div>
       </div>
 
       {/* Search & Filter */}
@@ -611,6 +727,235 @@ const Subjects = () => {
         type="danger"
         isLoading={deleteMutation.isPending}
       />
+
+      {/* Bulk Upload Modal */}
+      {isBulkModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="w-full max-w-md rounded-xl p-6 shadow-lg max-h-[90vh] overflow-y-auto"
+            style={{ backgroundColor: "var(--bg-card)" }}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3
+                className="text-lg font-semibold"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Bulk Upload Subjects
+              </h3>
+              <button
+                onClick={closeBulkModal}
+                style={{ color: "var(--text-muted)" }}
+              >
+                <HiOutlineX className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleBulkSubmit} className="space-y-4">
+              <div>
+                <label
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Select Department *
+                </label>
+                <select
+                  value={bulkDepartmentId}
+                  onChange={(e) => {
+                    setBulkDepartmentId(e.target.value);
+                    setBulkSemesterId("");
+                  }}
+                  required
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{
+                    backgroundColor: "var(--bg-main)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <option value="">Select Department</option>
+                  {departments?.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Select Semester *
+                </label>
+                <select
+                  value={bulkSemesterId}
+                  onChange={(e) => setBulkSemesterId(e.target.value)}
+                  required
+                  disabled={!bulkDepartmentId}
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: "var(--bg-main)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <option value="">
+                    {!bulkDepartmentId
+                      ? "Select department first"
+                      : filteredBulkSemesters?.length === 0
+                        ? "No semesters available"
+                        : "Select Semester"}
+                  </option>
+                  {filteredBulkSemesters?.map((sem) => (
+                    <option key={sem.id} value={sem.id}>
+                      Semester {sem.number}
+                    </option>
+                  ))}
+                </select>
+                <p
+                  className="text-xs mt-1"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  All subjects in the file will be assigned to this department
+                  &amp; semester
+                </p>
+              </div>
+
+              <div
+                className="p-4 rounded-lg"
+                style={{
+                  backgroundColor: "var(--primary-subtle)",
+                  border: "1px solid var(--primary)",
+                }}
+              >
+                <p className="text-sm" style={{ color: "var(--primary)" }}>
+                  <strong>CSV/Excel Format Required:</strong>
+                </p>
+                <p
+                  className="text-xs mt-1 font-mono"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  name, code, credit_hours
+                </p>
+                <p
+                  className="text-xs mt-2"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  <strong>Note:</strong> credit_hours is optional (defaults to
+                  3). Subject code must be unique across all subjects.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Upload File *
+                </label>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={(e) => setBulkFile(e.target.files[0])}
+                  required
+                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{
+                    backgroundColor: "var(--bg-main)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-primary)",
+                  }}
+                />
+              </div>
+
+              {bulkError && (
+                <AlertMessage
+                  type="error"
+                  message={bulkError}
+                  onClose={() => setBulkError("")}
+                />
+              )}
+
+              {bulkSuccess && (
+                <AlertMessage type="success" message={bulkSuccess} />
+              )}
+
+              {bulkResult?.errors && bulkResult.errors.length > 0 && (
+                <div
+                  className="p-3 rounded-lg"
+                  style={{
+                    backgroundColor: "var(--danger-subtle)",
+                    border: "1px solid var(--danger)",
+                  }}
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <p
+                      className="text-sm font-medium"
+                      style={{ color: "var(--danger)" }}
+                    >
+                      {bulkResult.errors.length} Error(s)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={downloadErrorCSV}
+                      className="text-xs px-2 py-1 rounded"
+                      style={{
+                        backgroundColor: "var(--danger)",
+                        color: "white",
+                      }}
+                    >
+                      Download Errors
+                    </button>
+                  </div>
+                  <div className="max-h-32 overflow-y-auto space-y-1">
+                    {bulkResult.errors.slice(0, 5).map((err, i) => (
+                      <p
+                        key={i}
+                        className="text-xs"
+                        style={{ color: "var(--danger)" }}
+                      >
+                        Row {err.row}: {err.error}
+                      </p>
+                    ))}
+                    {bulkResult.errors.length > 5 && (
+                      <p
+                        className="text-xs"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        ...and {bulkResult.errors.length - 5} more. Download CSV
+                        for full list.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeBulkModal}
+                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{
+                    backgroundColor: "var(--bg-main)",
+                    color: "var(--text-secondary)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  {bulkResult ? "Close" : "Cancel"}
+                </button>
+                {!bulkResult && (
+                  <button
+                    type="submit"
+                    disabled={bulkMutation.isPending}
+                    className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: "var(--primary)" }}
+                  >
+                    {bulkMutation.isPending ? "Uploading..." : "Upload"}
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

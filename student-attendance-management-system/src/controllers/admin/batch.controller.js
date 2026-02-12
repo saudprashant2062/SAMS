@@ -14,12 +14,14 @@ export const createBatch = asyncHandler(async (req, res) => {
 });
 
 export const getAllBatches = asyncHandler(async (req, res) => {
-    const batches = await getAllBatchesService();
-    res.json(new ApiResponse(200, batches));
+    const { department_id, page, limit } = req.query;
+    const result = await getAllBatchesService({ department_id, page, limit });
+    res.json(new ApiResponse(200, result));
 });
 
 export const getBatchById = asyncHandler(async (req, res) => {
-    const batch = await getBatchByIdService(req.params.id);
+    const { page, limit } = req.query;
+    const batch = await getBatchByIdService(req.params.id, { page, limit });
     res.json(new ApiResponse(200, batch));
 });
 

@@ -5,15 +5,27 @@ import {
     userPublicSelect,
     sectionWithDeptSemInclude,
 } from '../../utils/prisma.selects.js';
+import { parsePagination, paginatedResponse } from '../../utils/pagination.utils.js';
 
 export const createTeachingAssignment = async ({ teacher_id, section_id, subject_id }) => {
-    const teacher = await prisma.teacher.findUnique({ where: { id: teacher_id } });
+    // Validate all three in parallel to avoid sequential lookups
+    const [teacher, section, subject] = await Promise.all([
+        prisma.teacher.findUnique({
+            where: { id: teacher_id },
+            select: { id: true, is_deleted: true },
+        }),
+        prisma.section.findUnique({
+            where: { id: section_id },
+            select: { id: true, is_deleted: true, semester_id: true },
+        }),
+        prisma.subject.findUnique({
+            where: { id: subject_id },
+            select: { id: true, is_deleted: true, semester_id: true },
+        }),
+    ]);
+
     if (!teacher || teacher.is_deleted) throw new ApiError(404, 'Teacher not found');
-
-    const section = await prisma.section.findUnique({ where: { id: section_id } });
     if (!section || section.is_deleted) throw new ApiError(404, 'Section not found');
-
-    const subject = await prisma.subject.findUnique({ where: { id: subject_id } });
     if (!subject || subject.is_deleted) throw new ApiError(404, 'Subject not found');
 
     // Check if subject/section match same semester
@@ -27,16 +39,28 @@ export const createTeachingAssignment = async ({ teacher_id, section_id, subject
 
     return prisma.teachingAssignment.create({
         data: { teacher_id, section_id, subject_id },
-        include: {
-            teacher: { include: { user: { select: userMinimalSelect } } },
-            section: { include: sectionWithDeptSemInclude },
-            subject: true,
+        select: {
+            id: true,
+            created_at: true,
+            teacher: {
+                select: { id: true, user: { select: userMinimalSelect } },
+            },
+            section: {
+                select: {
+                    id: true,
+                    name: true,
+                    department: { select: { id: true, name: true } },
+                    semester: { select: { id: true, number: true } },
+                },
+            },
+            subject: { select: { id: true, name: true, code: true } },
         },
     });
 };
 
 export const getAllTeachingAssignments = async (filters = {}) => {
     const { teacher_id, subject_id, section_id, department_id } = filters;
+    const pagination = parsePagination(filters);
     const where = { is_deleted: false };
 
     // Add filters if provided
@@ -47,35 +71,72 @@ export const getAllTeachingAssignments = async (filters = {}) => {
         where.section = { ...where.section, department_id };
     }
 
-    return prisma.teachingAssignment.findMany({
-        where,
-        include: {
-            teacher: { include: { user: { select: userMinimalSelect } } },
-            section: { include: sectionWithDeptSemInclude },
-            subject: true,
-        },
-        orderBy: { created_at: 'desc' },
-    });
+    const [total, assignments] = await Promise.all([
+        prisma.teachingAssignment.count({ where }),
+        prisma.teachingAssignment.findMany({
+            where,
+            select: {
+                id: true,
+                created_at: true,
+                teacher: {
+                    select: { id: true, user: { select: userMinimalSelect } },
+                },
+                section: {
+                    select: {
+                        id: true,
+                        name: true,
+                        department: { select: { id: true, name: true } },
+                        semester: { select: { id: true, number: true } },
+                    },
+                },
+                subject: { select: { id: true, name: true, code: true } },
+            },
+            orderBy: { created_at: 'desc' },
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
+
+    return paginatedResponse(assignments, total, pagination);
 };
 
 export const getTeachingAssignmentById = async id => {
     const ta = await prisma.teachingAssignment.findUnique({
         where: { id },
-        include: {
-            teacher: { include: { user: { select: userMinimalSelect } } },
+        select: {
+            id: true,
+            is_deleted: true,
+            created_at: true,
+            teacher: {
+                select: { id: true, user: { select: userMinimalSelect } },
+            },
             section: {
-                include: {
-                    ...sectionWithDeptSemInclude,
+                select: {
+                    id: true,
+                    name: true,
+                    department: { select: { id: true, name: true } },
+                    semester: { select: { id: true, number: true } },
                     students: {
                         where: { is_deleted: false },
-                        include: { user: { select: userPublicSelect } },
+                        select: {
+                            id: true,
+                            stdId: true,
+                            roll_no: true,
+                            user: { select: userPublicSelect },
+                        },
                     },
                 },
             },
-            subject: true,
+            subject: { select: { id: true, name: true, code: true, credit_hours: true } },
             attendance_sessions: {
                 where: { is_deleted: false },
+                select: {
+                    id: true,
+                    session_date: true,
+                    is_cancelled: true,
+                },
                 orderBy: { session_date: 'desc' },
+                take: 20, // Limit for performance
             },
         },
     });

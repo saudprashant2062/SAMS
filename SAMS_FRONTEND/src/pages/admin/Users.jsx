@@ -29,6 +29,7 @@ import {
 } from "../../api/admin.api";
 import AlertMessage from "../../components/common/AlertMessage";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import Pagination from "../../components/common/Pagination";
 
 const Users = () => {
   const navigate = useNavigate();
@@ -87,41 +88,64 @@ const Users = () => {
     phone_number: "",
   });
 
+  const [page, setPage] = useState(1);
+
+  const handleSearchChange = (value) => {
+    setSearch(value);
+    setPage(1);
+  };
+
+  const handleRoleFilterChange = (value) => {
+    setRoleFilter(value);
+    setPage(1);
+  };
+
   // Fetch data
-  const { data: users, isLoading } = useQuery({
-    queryKey: ["users", { search, role: roleFilter }],
-    queryFn: () => getAllUsers({ search, role: roleFilter }),
-    select: (res) => res.data.data,
+  const { data: usersData, isLoading } = useQuery({
+    queryKey: ["users", { search, role: roleFilter, page }],
+    queryFn: () => getAllUsers({ search, role: roleFilter, page, limit: 20 }),
+    select: (res) => ({ data: res.data.data, pagination: res.data.pagination }),
   });
+  const users = usersData?.data;
+  const usersPagination = usersData?.pagination;
 
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: () => getAllSections(),
+    queryFn: () => getAllSections({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: batches } = useQuery({
     queryKey: ["batches"],
-    queryFn: () => getAllBatches(),
+    queryFn: () => getAllBatches({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: () => getAllDepartments(),
+    queryFn: () => getAllDepartments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   // Filter sections based on selected department
   const filteredSections = useMemo(() => {
-    if (!bulkDepartmentId || !sections) return sections || [];
-    return sections.filter(section => section.department_id === bulkDepartmentId);
-  }, [bulkDepartmentId, sections]);
+    if (!sections) return [];
+    let filtered = sections;
+    if (bulkDepartmentId) {
+      filtered = filtered.filter(
+        (section) => section.department_id === bulkDepartmentId,
+      );
+    }
+    if (bulkBatchId) {
+      filtered = filtered.filter((section) => section.batch_id === bulkBatchId);
+    }
+    return filtered;
+  }, [bulkDepartmentId, bulkBatchId, sections]);
 
   // Filter batches based on selected department
   const filteredBatches = useMemo(() => {
     if (!bulkDepartmentId || !batches) return batches || [];
-    return batches.filter(batch => batch.department_id === bulkDepartmentId);
+    return batches.filter((batch) => batch.department_id === bulkDepartmentId);
   }, [bulkDepartmentId, batches]);
 
   // Mutations
@@ -552,7 +576,7 @@ const Users = () => {
             type="text"
             placeholder="Search users..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-9 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none"
             style={{
               backgroundColor: "var(--bg-main)",
@@ -561,15 +585,15 @@ const Users = () => {
             }}
           />
         </div>
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-35 disabled:opacity-50"
-            style={{
-              backgroundColor: "var(--bg-main)",
-              border: "1px solid var(--border)",
-              color: "var(--text-primary)",
-            }}
+        <select
+          value={roleFilter}
+          onChange={(e) => handleRoleFilterChange(e.target.value)}
+          className="px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-35 disabled:opacity-50"
+          style={{
+            backgroundColor: "var(--bg-main)",
+            border: "1px solid var(--border)",
+            color: "var(--text-primary)",
+          }}
         >
           <option value="">All Roles</option>
           <option value="ADMIN">Admin</option>
@@ -722,6 +746,7 @@ const Users = () => {
             </tbody>
           </table>
         </div>
+        <Pagination pagination={usersPagination} onPageChange={setPage} />
       </div>
 
       {/* Modal */}
@@ -856,7 +881,9 @@ const Users = () => {
                   label="Password"
                   name="password"
                   value={studentForm.password}
-                  onChange={(e) => setStudentForm({ ...studentForm, password: e.target.value })}
+                  onChange={(e) =>
+                    setStudentForm({ ...studentForm, password: e.target.value })
+                  }
                   placeholder="Create a password"
                   required
                   showRequirements
@@ -1163,7 +1190,9 @@ const Users = () => {
                   label="Password"
                   name="password"
                   value={teacherForm.password}
-                  onChange={(e) => setTeacherForm({ ...teacherForm, password: e.target.value })}
+                  onChange={(e) =>
+                    setTeacherForm({ ...teacherForm, password: e.target.value })
+                  }
                   placeholder="Create a password"
                   required
                   showRequirements
@@ -1364,7 +1393,9 @@ const Users = () => {
                   label="Password"
                   name="password"
                   value={adminForm.password}
-                  onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
+                  onChange={(e) =>
+                    setAdminForm({ ...adminForm, password: e.target.value })
+                  }
                   placeholder="Create a password"
                   required
                   showRequirements
@@ -1450,9 +1481,9 @@ const Users = () => {
                         value={bulkDepartmentId}
                         onChange={(e) => {
                           setBulkDepartmentId(e.target.value);
-                          // Reset section and batch when department changes
-                          setBulkSectionId("");
+                          // Reset batch and section when department changes
                           setBulkBatchId("");
+                          setBulkSectionId("");
                         }}
                         required
                         className="w-full px-3 py-2 rounded-lg text-sm outline-none"
@@ -1473,50 +1504,8 @@ const Users = () => {
                         className="text-xs mt-1"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        Select the department first to filter sections and batches
-                      </p>
-                    </div>
-                    <div>
-                      <label
-                        className="block text-sm font-medium mb-1"
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        Select Section *
-                      </label>
-                      <select
-                        value={bulkSectionId}
-                        onChange={(e) => {
-                          setBulkSectionId(e.target.value);
-                          // Reset batch when section changes
-                          setBulkBatchId("");
-                        }}
-                        required
-                        disabled={!bulkDepartmentId}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{
-                          backgroundColor: "var(--bg-main)",
-                          border: "1px solid var(--border)",
-                          color: "var(--text-primary)",
-                        }}
-                      >
-                        <option value="">
-                          {!bulkDepartmentId 
-                            ? "Select department first" 
-                            : filteredSections?.length === 0
-                            ? "No sections available"
-                            : "Select Section"}
-                        </option>
-                        {filteredSections?.map((section) => (
-                          <option key={section.id} value={section.id}>
-                            {section.name} - Sem {section.semester?.number} - {section.batch?.name}
-                          </option>
-                        ))}
-                      </select>
-                      <p
-                        className="text-xs mt-1"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        All students in the CSV will be assigned to this section
+                        Select the department first to filter batches and
+                        sections
                       </p>
                     </div>
                     <div>
@@ -1528,7 +1517,11 @@ const Users = () => {
                       </label>
                       <select
                         value={bulkBatchId}
-                        onChange={(e) => setBulkBatchId(e.target.value)}
+                        onChange={(e) => {
+                          setBulkBatchId(e.target.value);
+                          // Reset section when batch changes
+                          setBulkSectionId("");
+                        }}
                         required
                         disabled={!bulkDepartmentId}
                         className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1539,11 +1532,11 @@ const Users = () => {
                         }}
                       >
                         <option value="">
-                          {!bulkDepartmentId 
-                            ? "Select department first" 
-                            : filteredBatches?.length === 0 
-                            ? "No batches available"
-                            : "Select Batch"}
+                          {!bulkDepartmentId
+                            ? "Select department first"
+                            : filteredBatches?.length === 0
+                              ? "No batches available"
+                              : "Select Batch"}
                         </option>
                         {filteredBatches?.map((batch) => (
                           <option key={batch.id} value={batch.id}>
@@ -1555,9 +1548,48 @@ const Users = () => {
                         className="text-xs mt-1"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        {bulkDepartmentId 
-                          ? `Showing batches from ${departments?.find(d => d.id === bulkDepartmentId)?.name || 'selected department'} only`
+                        {bulkDepartmentId
+                          ? `Showing batches from ${departments?.find((d) => d.id === bulkDepartmentId)?.name || "selected department"} only`
                           : "All students in the CSV will be assigned to this batch"}
+                      </p>
+                    </div>
+                    <div>
+                      <label
+                        className="block text-sm font-medium mb-1"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        Select Section *
+                      </label>
+                      <select
+                        value={bulkSectionId}
+                        onChange={(e) => setBulkSectionId(e.target.value)}
+                        required
+                        disabled={!bulkBatchId}
+                        className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: "var(--bg-main)",
+                          border: "1px solid var(--border)",
+                          color: "var(--text-primary)",
+                        }}
+                      >
+                        <option value="">
+                          {!bulkBatchId
+                            ? "Select batch first"
+                            : filteredSections?.length === 0
+                              ? "No sections available"
+                              : "Select Section"}
+                        </option>
+                        {filteredSections?.map((section) => (
+                          <option key={section.id} value={section.id}>
+                            {section.name} - Sem {section.semester?.number}
+                          </option>
+                        ))}
+                      </select>
+                      <p
+                        className="text-xs mt-1"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        All students in the CSV will be assigned to this section
                       </p>
                     </div>
                   </>

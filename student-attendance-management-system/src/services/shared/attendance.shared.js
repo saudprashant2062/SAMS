@@ -9,12 +9,20 @@ import { logActivity } from '../admin/activityLog.service.js';
  */
 
 /* =====================================================
-   VERIFY SESSION ACCESS
+   VERIFY SESSION ACCESS (OPTIMIZED - select only needed fields)
 ===================================================== */
 export const verifySessionAccess = async (sessionId, teacherId = null, isAdmin = false) => {
     const session = await prisma.attendanceSession.findUnique({
         where: { id: sessionId },
-        include: { teaching_assignment: true },
+        select: {
+            id: true,
+            is_deleted: true,
+            teaching_assignment_id: true,
+            section_id: true,
+            teaching_assignment: {
+                select: { teacher_id: true },
+            },
+        },
     });
 
     if (!session || session.is_deleted) {
@@ -29,15 +37,22 @@ export const verifySessionAccess = async (sessionId, teacherId = null, isAdmin =
 };
 
 /* =====================================================
-   VERIFY ASSIGNMENT ACCESS
+   VERIFY ASSIGNMENT ACCESS (OPTIMIZED - select only needed fields)
 ===================================================== */
 export const verifyAssignmentAccess = async (assignmentId, teacherId = null, isAdmin = false) => {
     const assignment = await prisma.teachingAssignment.findUnique({
         where: { id: assignmentId },
-        include: {
+        select: {
+            id: true,
+            teacher_id: true,
+            is_deleted: true,
             section: {
-                include: {
-                    students: { where: { is_deleted: false } },
+                select: {
+                    id: true,
+                    students: {
+                        where: { is_deleted: false },
+                        select: { id: true },
+                    },
                 },
             },
         },
@@ -92,7 +107,10 @@ export const createSession = async (
     });
 
     if (existingSession) {
-        throw new ApiError(400, 'An attendance session already exists for this subject on this date');
+        throw new ApiError(
+            400,
+            'An attendance session already exists for this subject on this date',
+        );
     }
 
     // Use transaction to create session and initialize records
@@ -103,11 +121,15 @@ export const createSession = async (
                 section: { connect: { id: assignment.section.id } },
                 session_date: selectedDate,
             },
-            include: {
+            select: {
+                id: true,
+                session_date: true,
+                created_at: true,
                 teaching_assignment: {
-                    include: {
-                        subject: true,
-                        section: true,
+                    select: {
+                        id: true,
+                        subject: { select: { id: true, name: true } },
+                        section: { select: { id: true, name: true } },
                     },
                 },
             },
@@ -131,54 +153,50 @@ export const createSession = async (
 };
 
 /* =====================================================
-   MARK/UPDATE ATTENDANCE RECORDS (SHARED)
+   MARK/UPDATE ATTENDANCE RECORDS (SHARED - OPTIMIZED)
+   - Batch validate students instead of N+1
+   - Use $transaction for batch upserts
+   - Use select instead of include
 ===================================================== */
 export const markAttendance = async (sessionId, records, teacherId = null, isAdmin = false) => {
     const session = await verifySessionAccess(sessionId, teacherId, isAdmin);
 
-    // Get session details for activity logging
+    // Get session details for activity logging with minimal select
     const teachingAssignment = await prisma.teachingAssignment.findUnique({
         where: { id: session.teaching_assignment_id },
-        include: {
-            subject: true,
-            section: true,
-            teacher: { include: { user: true } },
+        select: {
+            subject: { select: { name: true } },
+            section: { select: { name: true } },
+            teacher: {
+                select: {
+                    user: { select: { id: true } },
+                },
+            },
         },
     });
 
-    // Optimize: Use Promise.all for parallel execution instead of sequential loop
-    // This drastically reduces latency for large classes
-    const validRecords = [];
-    
-    // First validate students (fast parallel reads)
-    const studentChecks = await Promise.all(
-        records.map(async (record) => {
-            const student = await prisma.student.findUnique({
-                where: { id: record.student_id },
-                select: { id: true, is_deleted: true }
-            });
-            return { record, student };
-        })
-    );
+    // Batch validate students in ONE query instead of N+1
+    const studentIds = records.map(r => r.student_id);
+    const validStudents = await prisma.student.findMany({
+        where: {
+            id: { in: studentIds },
+            is_deleted: false,
+        },
+        select: { id: true },
+    });
 
-    // Filter valid students
-    for (const { record, student } of studentChecks) {
-        if (student && !student.is_deleted) {
-            validRecords.push(record);
-        }
-    }
+    const validStudentIdSet = new Set(validStudents.map(s => s.id));
+    const validRecords = records.filter(r => validStudentIdSet.has(r.student_id));
 
-    // Check if session exists (to determine action type for logging)
-    // We strictly check the first record to guess, or query the DB.
-    // Actually, we can check count of existing records for this session.
+    // Check if session is new for logging
     const existingCount = await prisma.attendanceRecord.count({
-        where: { session_id: sessionId }
+        where: { session_id: sessionId },
     });
     const isNewSession = existingCount === 0;
 
-    // Execute upserts in parallel
-    const updatedRecords = await Promise.all(
-        validRecords.map(record => 
+    // Use $transaction for batch upserts (more efficient than parallel Promise.all)
+    const updatedRecords = await prisma.$transaction(
+        validRecords.map(record =>
             prisma.attendanceRecord.upsert({
                 where: {
                     session_id_student_id: {
@@ -192,13 +210,19 @@ export const markAttendance = async (sessionId, records, teacherId = null, isAdm
                     student_id: record.student_id,
                     status: record.status,
                 },
-                include: {
+                select: {
+                    id: true,
+                    status: true,
                     student: {
-                        include: { user: { select: userMinimalSelect } },
+                        select: {
+                            id: true,
+                            roll_no: true,
+                            user: { select: userMinimalSelect },
+                        },
                     },
                 },
-            })
-        )
+            }),
+        ),
     );
 
     // Log activity only once after all records are processed
@@ -232,18 +256,30 @@ export const markAttendance = async (sessionId, records, teacherId = null, isAdm
 };
 
 /* =====================================================
-   GET ATTENDANCE RECORDS FOR SESSION (SHARED)
+   GET ATTENDANCE RECORDS FOR SESSION (SHARED - OPTIMIZED)
+   - Uses select instead of include
 ===================================================== */
 export const getSessionRecords = async (sessionId, teacherId = null, isAdmin = false) => {
     const session = await prisma.attendanceSession.findUnique({
         where: { id: sessionId },
-        include: {
-            teaching_assignment: true,
+        select: {
+            id: true,
+            is_deleted: true,
+            teaching_assignment: {
+                select: { teacher_id: true },
+            },
             records: {
                 where: { is_deleted: false },
-                include: {
+                select: {
+                    id: true,
+                    status: true,
                     student: {
-                        include: { user: { select: userPublicSelect } },
+                        select: {
+                            id: true,
+                            stdId: true,
+                            roll_no: true,
+                            user: { select: userPublicSelect },
+                        },
                     },
                 },
                 orderBy: { student: { roll_no: 'asc' } },

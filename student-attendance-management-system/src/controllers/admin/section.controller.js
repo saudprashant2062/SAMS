@@ -37,18 +37,20 @@ export const createSection = asyncHandler(async (req, res) => {
 
 /* ---------- GET ALL ---------- */
 export const getAllSections = asyncHandler(async (req, res) => {
-    const { department_id, batch_id, semester_id, include_archived } = req.query;
+    const { department_id, batch_id, semester_id, include_archived, page, limit } = req.query;
 
     const filters = {
         ...(department_id && { department_id }),
         ...(batch_id && { batch_id }),
         ...(semester_id && { semester_id }),
         ...(include_archived === 'true' && { include_archived: true }),
+        page,
+        limit,
     };
 
-    const sections = await getAllSectionsService(filters);
+    const result = await getAllSectionsService(filters);
 
-    res.status(200).json(new ApiResponse(200, sections, 'Sections fetched successfully'));
+    res.status(200).json(new ApiResponse(200, result, 'Sections fetched successfully'));
 });
 
 /* ---------- GET BY ID ---------- */
@@ -99,14 +101,16 @@ export const promoteSemester = asyncHandler(async (req, res) => {
 
 /* ---------- GET ARCHIVED SECTIONS ---------- */
 export const getArchivedSections = asyncHandler(async (req, res) => {
-    const { department_id, batch_id, semester_id } = req.query;
+    const { department_id, batch_id, semester_id, page, limit } = req.query;
 
     const filters = {
         ...(department_id && { department_id }),
         ...(batch_id && { batch_id }),
         ...(semester_id && { semester_id }),
+        page,
+        limit,
     };
 
-    const sections = await getArchivedSectionsService(filters);
-    res.status(200).json(new ApiResponse(200, sections, 'Archived sections fetched successfully'));
+    const result = await getArchivedSectionsService(filters);
+    res.status(200).json(new ApiResponse(200, result, 'Archived sections fetched successfully'));
 });

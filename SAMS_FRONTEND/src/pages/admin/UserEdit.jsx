@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -6,7 +6,12 @@ import {
   HiOutlinePhotograph,
   HiOutlineX,
 } from "react-icons/hi";
-import { getUserById, updateUser, getAllSections } from "../../api/admin.api";
+import {
+  getUserById,
+  updateUser,
+  getAllSections,
+  getAllDepartments,
+} from "../../api/admin.api";
 
 const UserEdit = () => {
   const { id } = useParams();
@@ -25,6 +30,7 @@ const UserEdit = () => {
   });
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [filterDepartment, setFilterDepartment] = useState("");
 
   const { data: user, isLoading: userLoading } = useQuery({
     queryKey: ["user", id],
@@ -34,10 +40,26 @@ const UserEdit = () => {
 
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: () => getAllSections(),
+    queryFn: () => getAllSections({ limit: 100 }),
     select: (res) => res.data.data,
     enabled: user?.role === "STUDENT",
   });
+
+  const { data: departments } = useQuery({
+    queryKey: ["departments"],
+    queryFn: () => getAllDepartments({ limit: 100 }),
+    select: (res) => res.data.data,
+    enabled: user?.role === "STUDENT",
+  });
+
+  // Filter sections by selected department
+  const filteredSections = useMemo(() => {
+    if (!sections) return [];
+    if (!filterDepartment) return sections;
+    return sections.filter(
+      (section) => section.department_id === filterDepartment,
+    );
+  }, [sections, filterDepartment]);
 
   useEffect(() => {
     if (user) {
@@ -50,6 +72,12 @@ const UserEdit = () => {
         section_id: user.student?.section_id || "",
         designation: user.teacher?.designation || "",
       });
+      // Set initial department filter from current section
+      if (user.student?.section?.department_id) {
+        setFilterDepartment(user.student.section.department_id);
+      } else if (user.student?.section?.department?.id) {
+        setFilterDepartment(user.student.section.department.id);
+      }
       if (user.photo_url) {
         setPhotoPreview(user.photo_url);
       }
@@ -347,6 +375,36 @@ const UserEdit = () => {
               </div>
               <div>
                 <label
+                  htmlFor="filterDepartment"
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Filter by Department
+                </label>
+                <select
+                  id="filterDepartment"
+                  value={filterDepartment}
+                  onChange={(e) => {
+                    setFilterDepartment(e.target.value);
+                    setFormData({ ...formData, section_id: "" });
+                  }}
+                  className="w-full px-3 py-2 rounded-lg text-sm"
+                  style={{
+                    backgroundColor: "var(--bg-main)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <option value="">All Departments</option>
+                  {departments?.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label
                   htmlFor="section"
                   className="block text-sm font-medium mb-2"
                   style={{ color: "var(--text-primary)" }}
@@ -368,7 +426,7 @@ const UserEdit = () => {
                   }}
                 >
                   <option value="">Select Section</option>
-                  {sections?.map((section) => (
+                  {filteredSections?.map((section) => (
                     <option key={section.id} value={section.id}>
                       {section.name} - Semester {section.semester?.number} (
                       {section.department?.name})

@@ -10,13 +10,17 @@ import {
     markAttendance as sharedMarkAttendance,
     buildStudentSummary,
 } from '../shared/attendance.shared.js';
+import { parsePagination, paginatedResponse } from '../../utils/pagination.utils.js';
 
 /* =====================================================
-   GET ALL ATTENDANCE SESSIONS (ADMIN)
+   GET ALL ATTENDANCE SESSIONS (ADMIN - OPTIMIZED)
+   - Pagination added
+   - select used instead of include
 ===================================================== */
 export const getAllAttendanceSessionsService = async (filters = {}) => {
     const { department_id, semester_id, section_id, subject_id, teacher_id, start_date, end_date } =
         filters;
+    const pagination = parsePagination(filters);
 
     const where = { is_deleted: false };
 
@@ -40,44 +44,122 @@ export const getAllAttendanceSessionsService = async (filters = {}) => {
         if (end_date) where.session_date.lte = new Date(end_date);
     }
 
-    return prisma.attendanceSession.findMany({
-        where,
-        include: {
-            teaching_assignment: {
-                include: {
-                    teacher: { include: { user: { select: userMinimalSelect } } },
-                    subject: true,
-                    section: { include: sectionWithDeptSemInclude },
+    const [total, sessions] = await Promise.all([
+        prisma.attendanceSession.count({ where }),
+        prisma.attendanceSession.findMany({
+            where,
+            select: {
+                id: true,
+                session_date: true,
+                is_cancelled: true,
+                notes: true,
+                created_at: true,
+                teaching_assignment: {
+                    select: {
+                        id: true,
+                        teacher: {
+                            select: {
+                                id: true,
+                                user: { select: userMinimalSelect },
+                            },
+                        },
+                        subject: { select: { id: true, name: true, code: true } },
+                        section: {
+                            select: {
+                                id: true,
+                                name: true,
+                                department: { select: { id: true, name: true } },
+                                semester: { select: { id: true, number: true } },
+                            },
+                        },
+                    },
+                },
+                _count: {
+                    select: { records: { where: { is_deleted: false } } },
                 },
             },
-            records: {
-                where: { is_deleted: false },
-                include: {
-                    student: { include: { user: { select: userPublicSelect } } },
-                },
-            },
-        },
-        orderBy: { session_date: 'desc' },
+            orderBy: { session_date: 'desc' },
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
+
+    // Get per-session present/absent counts using groupBy (avoids N+1)
+    const sessionIds = sessions.map(s => s.id);
+    const recordStats =
+        sessionIds.length > 0
+            ? await prisma.attendanceRecord.groupBy({
+                  by: ['session_id', 'status'],
+                  where: {
+                      session_id: { in: sessionIds },
+                      is_deleted: false,
+                  },
+                  _count: { status: true },
+              })
+            : [];
+
+    // Build per-session stats map
+    const statsMap = new Map();
+    recordStats.forEach(stat => {
+        if (!statsMap.has(stat.session_id)) {
+            statsMap.set(stat.session_id, { present: 0, absent: 0, total: 0 });
+        }
+        const s = statsMap.get(stat.session_id);
+        s.total += stat._count.status;
+        if (stat.status === 'PRESENT') s.present += stat._count.status;
+        else if (stat.status === 'ABSENT') s.absent += stat._count.status;
     });
+
+    // Attach presentCount and absentCount to each session
+    const sessionsWithCounts = sessions.map(session => {
+        const stats = statsMap.get(session.id) || { present: 0, absent: 0, total: 0 };
+        return {
+            ...session,
+            presentCount: stats.present,
+            absentCount: stats.absent,
+        };
+    });
+
+    return paginatedResponse(sessionsWithCounts, total, pagination);
 };
 
 /* =====================================================
-   GET ATTENDANCE SESSION BY ID (ADMIN)
+   GET ATTENDANCE SESSION BY ID (ADMIN - OPTIMIZED)
 ===================================================== */
 export const getAttendanceSessionByIdService = async id => {
     const session = await prisma.attendanceSession.findUnique({
         where: { id },
-        include: {
+        select: {
+            id: true,
+            session_date: true,
+            is_cancelled: true,
+            notes: true,
+            is_deleted: true,
+            created_at: true,
             teaching_assignment: {
-                include: {
-                    teacher: { include: { user: { select: userMinimalSelect } } },
-                    subject: true,
+                select: {
+                    id: true,
+                    teacher: {
+                        select: {
+                            id: true,
+                            user: { select: userMinimalSelect },
+                        },
+                    },
+                    subject: { select: { id: true, name: true, code: true } },
                     section: {
-                        include: {
-                            ...sectionWithDeptSemInclude,
+                        select: {
+                            id: true,
+                            name: true,
+                            department: { select: { id: true, name: true } },
+                            semester: { select: { id: true, number: true } },
                             students: {
                                 where: { is_deleted: false },
-                                include: { user: { select: userPublicSelect } },
+                                select: {
+                                    id: true,
+                                    stdId: true,
+                                    roll_no: true,
+                                    user: { select: userPublicSelect },
+                                },
                             },
                         },
                     },
@@ -85,8 +167,17 @@ export const getAttendanceSessionByIdService = async id => {
             },
             records: {
                 where: { is_deleted: false },
-                include: {
-                    student: { include: { user: { select: userPublicSelect } } },
+                select: {
+                    id: true,
+                    status: true,
+                    student: {
+                        select: {
+                            id: true,
+                            stdId: true,
+                            roll_no: true,
+                            user: { select: userPublicSelect },
+                        },
+                    },
                 },
             },
         },
@@ -122,7 +213,7 @@ export const updateAttendanceSessionService = async (id, data) => {
 
     if (data.session_date) {
         const newDate = new Date(data.session_date);
-        
+
         // Prevent duplicate sessions for the same assignment on the same day when updating
         const startOfDay = new Date(newDate);
         startOfDay.setHours(0, 0, 0, 0);
@@ -142,7 +233,10 @@ export const updateAttendanceSessionService = async (id, data) => {
         });
 
         if (existingSession) {
-            throw new ApiError(400, 'An attendance session already exists for this subject on this date');
+            throw new ApiError(
+                400,
+                'An attendance session already exists for this subject on this date',
+            );
         }
     }
 
@@ -196,7 +290,10 @@ export const markAttendanceService = async data => {
    UPDATE SINGLE ATTENDANCE RECORD (ADMIN)
 ===================================================== */
 export const updateAttendanceRecordService = async (id, data) => {
-    const record = await prisma.attendanceRecord.findUnique({ where: { id } });
+    const record = await prisma.attendanceRecord.findUnique({
+        where: { id },
+        select: { id: true, is_deleted: true },
+    });
 
     if (!record || record.is_deleted) {
         throw new ApiError(404, 'Attendance record not found');
@@ -205,15 +302,20 @@ export const updateAttendanceRecordService = async (id, data) => {
     return prisma.attendanceRecord.update({
         where: { id },
         data: { status: data.status },
-        include: {
+        select: {
+            id: true,
+            status: true,
             student: {
-                include: {
+                select: {
+                    id: true,
                     user: {
                         select: { fullname: true, email: true },
                     },
                 },
             },
-            session: true,
+            session: {
+                select: { id: true, session_date: true },
+            },
         },
     });
 };
@@ -236,16 +338,26 @@ export const deleteAttendanceRecordService = async id => {
 };
 
 /* =====================================================
-   GET ATTENDANCE SUMMARY BY SECTION (ADMIN)
+   GET ATTENDANCE SUMMARY BY SECTION (ADMIN - OPTIMIZED)
+   - Uses groupBy to avoid N+1 queries
 ===================================================== */
 export const getAttendanceSummaryBySectionService = async sectionId => {
     const section = await prisma.section.findUnique({
         where: { id: sectionId },
-        include: {
-            ...sectionWithDeptSemInclude,
+        select: {
+            id: true,
+            name: true,
+            is_deleted: true,
+            department: { select: { id: true, name: true } },
+            semester: { select: { id: true, number: true } },
             students: {
                 where: { is_deleted: false },
-                include: { user: { select: userMinimalSelect } },
+                select: {
+                    id: true,
+                    stdId: true,
+                    roll_no: true,
+                    user: { select: userMinimalSelect },
+                },
             },
         },
     });
@@ -254,26 +366,136 @@ export const getAttendanceSummaryBySectionService = async sectionId => {
         throw new ApiError(404, 'Section not found');
     }
 
+    // Get teaching assignments for this section
     const teachingAssignments = await prisma.teachingAssignment.findMany({
         where: { section_id: sectionId, is_deleted: false },
-        include: {
-            subject: true,
-            attendance_sessions: {
-                where: { is_deleted: false },
-                include: { records: { where: { is_deleted: false } } },
-            },
+        select: {
+            id: true,
+            subject: { select: { id: true, name: true, code: true } },
         },
     });
 
-    const studentSummaries = section.students.map(student =>
-        buildStudentSummary(student, teachingAssignments),
+    const assignmentIds = teachingAssignments.map(a => a.id);
+    const studentIds = section.students.map(s => s.id);
+
+    // Get session counts per assignment using groupBy
+    const sessionCounts = await prisma.attendanceSession.groupBy({
+        by: ['teaching_assignment_id'],
+        where: {
+            teaching_assignment_id: { in: assignmentIds },
+            is_deleted: false,
+        },
+        _count: { id: true },
+    });
+
+    const sessionCountMap = new Map(
+        sessionCounts.map(s => [s.teaching_assignment_id, s._count.id]),
     );
+
+    // Get all attendance records grouped by student + subject
+    const sessions = await prisma.attendanceSession.findMany({
+        where: {
+            teaching_assignment_id: { in: assignmentIds },
+            is_deleted: false,
+        },
+        select: { id: true, teaching_assignment_id: true },
+    });
+
+    const sessionIds = sessions.map(s => s.id);
+    const sessionToAssignment = new Map(sessions.map(s => [s.id, s.teaching_assignment_id]));
+
+    // Get all attendance records in one query
+    const allRecords = await prisma.attendanceRecord.groupBy({
+        by: ['student_id', 'status'],
+        where: {
+            student_id: { in: studentIds },
+            session_id: { in: sessionIds },
+            is_deleted: false,
+        },
+        _count: { status: true },
+    });
+
+    // Build per-student per-assignment stats
+    // We need per-assignment data, so fetch raw records with minimal select
+    const rawRecords = await prisma.attendanceRecord.findMany({
+        where: {
+            student_id: { in: studentIds },
+            session_id: { in: sessionIds },
+            is_deleted: false,
+        },
+        select: {
+            student_id: true,
+            status: true,
+            session_id: true,
+        },
+    });
+
+    // Build nested map: studentId -> assignmentId -> { present, total }
+    const studentAssignmentStats = new Map();
+    rawRecords.forEach(r => {
+        const assignmentId = sessionToAssignment.get(r.session_id);
+        if (!assignmentId) return;
+
+        if (!studentAssignmentStats.has(r.student_id)) {
+            studentAssignmentStats.set(r.student_id, new Map());
+        }
+        const assignMap = studentAssignmentStats.get(r.student_id);
+        if (!assignMap.has(assignmentId)) {
+            assignMap.set(assignmentId, { present: 0, total: 0 });
+        }
+        const stats = assignMap.get(assignmentId);
+        stats.total++;
+        if (r.status === 'PRESENT') stats.present++;
+    });
+
+    // Build student summaries
+    const studentSummaries = section.students.map(student => {
+        const assignMap = studentAssignmentStats.get(student.id) || new Map();
+
+        const subjectWise = teachingAssignments.map(assignment => {
+            const totalSessions = sessionCountMap.get(assignment.id) || 0;
+            const stats = assignMap.get(assignment.id) || { present: 0, total: 0 };
+
+            return {
+                subject: assignment.subject,
+                total_sessions: totalSessions,
+                attended: stats.present,
+                absent: totalSessions - stats.present,
+                percentage:
+                    totalSessions > 0
+                        ? parseFloat(((stats.present / totalSessions) * 100).toFixed(2))
+                        : 0,
+            };
+        });
+
+        const totalSessions = subjectWise.reduce((sum, s) => sum + s.total_sessions, 0);
+        const totalAttended = subjectWise.reduce((sum, s) => sum + s.attended, 0);
+
+        return {
+            student: {
+                id: student.id,
+                stdId: student.stdId,
+                roll_no: student.roll_no,
+                name: student.user.fullname,
+                email: student.user.email,
+            },
+            overall: {
+                total_sessions: totalSessions,
+                attended: totalAttended,
+                absent: totalSessions - totalAttended,
+                percentage:
+                    totalSessions > 0
+                        ? parseFloat(((totalAttended / totalSessions) * 100).toFixed(2))
+                        : 0,
+            },
+            subjects: subjectWise,
+        };
+    });
 
     return {
         section: {
             id: section.id,
             name: section.name,
-            batch_year: section.batch_year,
             department: section.department.name,
             semester: section.semester.number,
         },

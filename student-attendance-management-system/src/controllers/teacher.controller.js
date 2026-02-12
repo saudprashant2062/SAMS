@@ -24,8 +24,9 @@ export const getTeacherDashboard = asyncHandler(async (req, res) => {
 
 /* ---------- GET ALL ASSIGNMENTS ---------- */
 export const getAssignments = asyncHandler(async (req, res) => {
-    const assignments = await getTeacherAssignmentsService(req.user.teacher.id);
-    res.status(200).json(new ApiResponse(200, assignments, 'Teaching assignments fetched'));
+    const { page, limit } = req.query;
+    const result = await getTeacherAssignmentsService(req.user.teacher.id, { page, limit });
+    res.status(200).json(new ApiResponse(200, result, 'Teaching assignments fetched'));
 });
 
 /* ---------- GET TEACHING ASSIGNMENT BY ID ---------- */
@@ -72,12 +73,14 @@ export const getAttendanceRecords = asyncHandler(async (req, res) => {
 
 /* ---------- GET ATTENDANCE HISTORY ---------- */
 export const getAttendanceHistory = asyncHandler(async (req, res) => {
-    const history = await getAttendanceHistoryService(
+    const { page, limit } = req.query;
+    const result = await getAttendanceHistoryService(
         req.user.teacher.id,
         req.params.assignment_id,
         req.user.role === 'ADMIN',
+        { page, limit },
     );
-    res.status(200).json(new ApiResponse(200, history, 'Attendance history fetched'));
+    res.status(200).json(new ApiResponse(200, result, 'Attendance history fetched'));
 });
 
 /* ---------- UPDATE ATTENDANCE SESSION ---------- */

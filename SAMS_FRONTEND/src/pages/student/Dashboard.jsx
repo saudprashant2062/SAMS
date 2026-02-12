@@ -257,6 +257,15 @@ const StudentDashboard = () => {
                         className="text-xs"
                         style={{ color: "var(--text-muted)" }}
                       >
+                        {subject.subject.code}
+                        {subject.subject.credit_hours
+                          ? ` • ${subject.subject.credit_hours} Credit Hr`
+                          : ""}
+                      </p>
+                      <p
+                        className="text-xs"
+                        style={{ color: "var(--text-muted)" }}
+                      >
                         {subject.total_sessions === 0
                           ? "No classes held yet"
                           : `${subject.attended_sessions} / ${subject.total_sessions} classes`}

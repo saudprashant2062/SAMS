@@ -26,10 +26,10 @@ export const createTeachingAssignment = asyncHandler(async (req, res) => {
 });
 
 export const getAllTeachingAssignments = asyncHandler(async (req, res) => {
-    const { teacher_id, subject_id, section_id, department_id } = req.query;
-    const filters = { teacher_id, subject_id, section_id, department_id };
-    const tas = await taService.getAllTeachingAssignments(filters);
-    res.status(200).json(new ApiResponse(200, tas, 'Teaching assignments fetched'));
+    const { teacher_id, subject_id, section_id, department_id, page, limit } = req.query;
+    const filters = { teacher_id, subject_id, section_id, department_id, page, limit };
+    const result = await taService.getAllTeachingAssignments(filters);
+    res.status(200).json(new ApiResponse(200, result, 'Teaching assignments fetched'));
 });
 
 export const getTeachingAssignmentById = asyncHandler(async (req, res) => {

@@ -11,6 +11,7 @@ import {
 } from "react-icons/hi";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import CascadingFilters from "../../components/common/CascadingFilters";
+import Pagination from "../../components/common/Pagination";
 import {
   getAllAttendanceSessions,
   getAttendanceSessionById,
@@ -54,46 +55,49 @@ const AdminAttendance = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
   const [editForm, setEditForm] = useState({ session_date: "" });
+  const [page, setPage] = useState(1);
 
-  const { data: sessions, isLoading } = useQuery({
-    queryKey: ["attendanceSessions", filters],
-    queryFn: () => getAllAttendanceSessions(filters),
-    select: (res) => res.data.data,
+  const { data: sessionsData, isLoading } = useQuery({
+    queryKey: ["attendanceSessions", filters, page],
+    queryFn: () => getAllAttendanceSessions({ ...filters, page, limit: 20 }),
+    select: (res) => ({ data: res.data.data, pagination: res.data.pagination }),
   });
+  const sessions = sessionsData?.data;
+  const sessionsPagination = sessionsData?.pagination;
 
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: () => getAllDepartments(),
+    queryFn: () => getAllDepartments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: batches } = useQuery({
     queryKey: ["batches"],
-    queryFn: () => getAllBatches(),
+    queryFn: () => getAllBatches({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: semesters } = useQuery({
     queryKey: ["semesters"],
-    queryFn: () => getAllSemesters(),
+    queryFn: () => getAllSemesters({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: sections } = useQuery({
     queryKey: ["sections"],
-    queryFn: () => getAllSections(),
+    queryFn: () => getAllSections({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: subjects } = useQuery({
     queryKey: ["subjects"],
-    queryFn: () => getAllSubjects(),
+    queryFn: () => getAllSubjects({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
   const { data: teachingAssignments } = useQuery({
     queryKey: ["teachingAssignments"],
-    queryFn: () => getAllTeachingAssignments(),
+    queryFn: () => getAllTeachingAssignments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
@@ -293,12 +297,12 @@ const AdminAttendance = () => {
     }
   };
 
-  // Calculate counts from records
+  // Get counts from session (backend provides presentCount/absentCount)
   const getSessionCounts = (session) => {
-    const records = session.records || [];
-    const presentCount = records.filter((r) => r.status === "PRESENT").length;
-    const absentCount = records.filter((r) => r.status === "ABSENT").length;
-    return { presentCount, absentCount };
+    return {
+      presentCount: session.presentCount || 0,
+      absentCount: session.absentCount || 0,
+    };
   };
 
   return (
@@ -337,7 +341,7 @@ const AdminAttendance = () => {
         {/* Cascading Filters */}
         <CascadingFilters
           value={filters}
-          onChange={(newFilters) =>
+          onChange={(newFilters) => {
             setFilters({
               ...filters,
               ...newFilters,
@@ -345,8 +349,9 @@ const AdminAttendance = () => {
                 newFilters.section_id !== filters.section_id
                   ? ""
                   : filters.subject_id,
-            })
-          }
+            });
+            setPage(1);
+          }}
           departments={departments || []}
           batches={batches || []}
           semesters={semesters || []}
@@ -618,7 +623,7 @@ const AdminAttendance = () => {
                             title="Edit Date"
                             style={{ color: "var(--primary)" }}
                           >
-                            <HiOutlineCalendar     className="w-4 h-4" />
+                            <HiOutlineCalendar className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => openMarkAttendance(session)}
@@ -645,6 +650,7 @@ const AdminAttendance = () => {
             </tbody>
           </table>
         </div>
+        <Pagination pagination={sessionsPagination} onPageChange={setPage} />
       </div>
 
       {/* Create Session Modal */}

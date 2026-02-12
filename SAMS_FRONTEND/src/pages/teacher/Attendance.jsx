@@ -39,7 +39,7 @@ const TeacherAttendance = () => {
 
   const { data: assignments } = useQuery({
     queryKey: ["teacherAssignments"],
-    queryFn: () => getTeacherAssignments(),
+    queryFn: () => getTeacherAssignments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
@@ -52,7 +52,7 @@ const TeacherAttendance = () => {
 
   const { data: history } = useQuery({
     queryKey: ["attendanceHistory", selectedAssignment],
-    queryFn: () => getAttendanceHistory(selectedAssignment),
+    queryFn: () => getAttendanceHistory(selectedAssignment, { limit: 100 }),
     select: (res) => res.data.data,
     enabled: !!selectedAssignment && activeTab === "history",
   });
@@ -241,25 +241,34 @@ const TeacherAttendance = () => {
   };
 
   const handleUpdateRecords = () => {
-    const records = Object.entries(tempAttendance).map(([studentId, status]) => ({
-      student_id: studentId,
-      status,
-    }));
+    const records = Object.entries(tempAttendance).map(
+      ([studentId, status]) => ({
+        student_id: studentId,
+        status,
+      }),
+    );
     recordMarkMutation.mutate({
       session_id: editingRecordSession.id,
       records,
     });
   };
 
-  const getStatusButton = (studentId, status, icon, label, color, currentStatus) => {
+  const getStatusButton = (
+    studentId,
+    status,
+    icon,
+    label,
+    color,
+    currentStatus,
+  ) => {
     const isActive = (currentStatus || attendance[studentId]) === status;
     return (
       <button
         onClick={() => {
           if (currentStatus !== undefined) {
-             handleTempStatusChange(studentId, status);
+            handleTempStatusChange(studentId, status);
           } else {
-             handleStatusChange(studentId, status);
+            handleStatusChange(studentId, status);
           }
         }}
         className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
@@ -812,7 +821,8 @@ const TeacherAttendance = () => {
                   Edit Attendance Records
                 </h3>
                 <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                  {formatDate(editingRecordSession.date)} • {selectedAssignmentData?.subject?.name}
+                  {formatDate(editingRecordSession.date)} •{" "}
+                  {selectedAssignmentData?.subject?.name}
                 </p>
               </div>
               <button
@@ -825,25 +835,37 @@ const TeacherAttendance = () => {
             </div>
 
             <div className="mt-4 space-y-4">
-              <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+              <div
+                className="divide-y"
+                style={{ borderColor: "var(--border)" }}
+              >
                 {editingRecordSession.records?.map((record) => (
-                  <div key={record.student_id} className="py-3 flex items-center justify-between">
+                  <div
+                    key={record.student_id}
+                    className="py-3 flex items-center justify-between"
+                  >
                     <div>
-                      <p className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>
+                      <p
+                        className="font-medium text-sm"
+                        style={{ color: "var(--text-primary)" }}
+                      >
                         {record.student?.user?.fullname}
                       </p>
-                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      <p
+                        className="text-xs"
+                        style={{ color: "var(--text-muted)" }}
+                      >
                         Roll No: {record.student?.roll_no}
                       </p>
                     </div>
                     <div className="flex gap-2">
-                       {getStatusButton(
+                      {getStatusButton(
                         record.student_id,
                         "PRESENT",
                         <HiOutlineCheck className="w-3.5 h-3.5" />,
                         "Present",
                         "var(--status-present)",
-                        tempAttendance[record.student_id]
+                        tempAttendance[record.student_id],
                       )}
                       {getStatusButton(
                         record.student_id,
@@ -851,7 +873,7 @@ const TeacherAttendance = () => {
                         <HiOutlineX className="w-3.5 h-3.5" />,
                         "Absent",
                         "var(--status-absent)",
-                        tempAttendance[record.student_id]
+                        tempAttendance[record.student_id],
                       )}
                     </div>
                   </div>
@@ -859,16 +881,29 @@ const TeacherAttendance = () => {
               </div>
 
               {alertMessage.type === "error" && alertMessage.message && (
-                <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: "var(--danger-subtle)", color: "var(--danger)" }}>
+                <div
+                  className="p-3 rounded-lg text-sm"
+                  style={{
+                    backgroundColor: "var(--danger-subtle)",
+                    color: "var(--danger)",
+                  }}
+                >
                   {alertMessage.message}
                 </div>
               )}
 
-              <div className="flex gap-3 pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+              <div
+                className="flex gap-3 pt-4 border-t"
+                style={{ borderColor: "var(--border)" }}
+              >
                 <button
                   onClick={() => setIsRecordEditModalOpen(false)}
                   className="flex-1 px-4 py-2 rounded-lg font-medium border transition-colors"
-                  style={{ backgroundColor: "white", borderColor: "var(--border)", color: "var(--text-secondary)" }}
+                  style={{
+                    backgroundColor: "white",
+                    borderColor: "var(--border)",
+                    color: "var(--text-secondary)",
+                  }}
                 >
                   Cancel
                 </button>
@@ -878,7 +913,9 @@ const TeacherAttendance = () => {
                   className="flex-1 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50"
                   style={{ backgroundColor: "var(--primary)" }}
                 >
-                  {recordMarkMutation.isPending ? "Updating..." : "Update Attendance"}
+                  {recordMarkMutation.isPending
+                    ? "Updating..."
+                    : "Update Attendance"}
                 </button>
               </div>
             </div>

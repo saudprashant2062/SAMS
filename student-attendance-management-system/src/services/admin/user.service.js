@@ -8,6 +8,7 @@ import csv from 'csv-parser';
 import xlsx from 'xlsx';
 import { bulkStudentRowSchema, bulkTeacherRowSchema } from '../../validators/user.validator.js';
 import { userBasicSelect } from '../../utils/prisma.selects.js';
+import { parsePagination, paginatedResponse } from '../../utils/pagination.utils.js';
 
 /* ---------- Common user select for responses ---------- */
 const userResponseSelect = {
@@ -248,72 +249,74 @@ export const bulkCreateStudentsCSVService = async (filePath, defaultSectionId, d
         throw new ApiError(400, 'The file is empty or contains no valid data.');
     }
 
+    // First pass: validate all rows and collect emails/phones
+    const validatedRows = [];
+    for (const [index, row] of rows.entries()) {
+        // Normalize row keys to lowercase
+        const normalizedRow = {};
+        Object.keys(row).forEach(key => {
+            normalizedRow[key.toLowerCase().trim()] = row[key];
+        });
+
+        const section_id = defaultSectionId || normalizedRow.section_id;
+        if (!section_id) {
+            errors.push({ row: index + 1, error: 'Section is required for each student' });
+            continue;
+        }
+
+        const batch_id = defaultBatchId || normalizedRow.batch_id;
+        if (!batch_id) {
+            errors.push({ row: index + 1, error: 'Batch is required for each student' });
+            continue;
+        }
+
+        const rowWithData = { ...normalizedRow, section_id, batch_id };
+        const parsed = bulkStudentRowSchema.safeParse(rowWithData);
+        if (!parsed.success) {
+            const errorMessages = Object.entries(parsed.error.format())
+                .filter(([key]) => key !== '_errors')
+                .map(([field, err]) =>
+                    err._errors?.length > 0
+                        ? `${field}: ${err._errors.join(', ')}`
+                        : `${field}: Invalid value`,
+                )
+                .join('; ');
+            errors.push({ row: index + 1, error: errorMessages || 'Validation failed' });
+            continue;
+        }
+        validatedRows.push({ index, parsed: parsed.data, section_id, batch_id });
+    }
+
+    // Batch-check existing emails and phones in ONE query each (avoid N+1)
+    const allEmails = validatedRows.map(r => r.parsed.email);
+    const allPhones = validatedRows.map(r => r.parsed.phone_number).filter(Boolean);
+
+    const [existingEmails, existingPhones] = await Promise.all([
+        prisma.user.findMany({ where: { email: { in: allEmails } }, select: { email: true } }),
+        allPhones.length > 0
+            ? prisma.user.findMany({
+                  where: { phone_number: { in: allPhones } },
+                  select: { phone_number: true },
+              })
+            : [],
+    ]);
+
+    const emailSet = new Set(existingEmails.map(u => u.email));
+    const phoneSet = new Set(existingPhones.map(u => u.phone_number));
+
     const createdStudents = [];
 
-    for (const [index, row] of rows.entries()) {
+    for (const { index, parsed, section_id, batch_id } of validatedRows) {
         try {
-            // Normalize row keys to lowercase
-            const normalizedRow = {};
-            Object.keys(row).forEach(key => {
-                normalizedRow[key.toLowerCase().trim()] = row[key];
-            });
-
-            // Use default section_id if provided, otherwise use from CSV
-            const section_id = defaultSectionId || normalizedRow.section_id;
-            if (!section_id) {
-                errors.push({
-                    row: index + 1,
-                    error: 'Section is required for each student',
-                });
-                continue;
-            }
-
-            // Use default batch_id if provided, otherwise use from CSV
-            const batch_id = defaultBatchId || normalizedRow.batch_id;
-            if (!batch_id) {
-                errors.push({
-                    row: index + 1,
-                    error: 'Batch is required for each student',
-                });
-                continue;
-            }
-
-            // Create modified row with section_id and batch_id
-            const rowWithData = { ...normalizedRow, section_id, batch_id };
-
-            // Validate row using Zod
-            const parsed = bulkStudentRowSchema.safeParse(rowWithData);
-            if (!parsed.success) {
-                const errorMessages = Object.entries(parsed.error.format())
-                    .filter(([key]) => key !== '_errors')
-                    .map(([field, err]) => {
-                        if (err._errors && err._errors.length > 0) {
-                            return `${field}: ${err._errors.join(', ')}`;
-                        }
-                        return `${field}: Invalid value`;
-                    })
-                    .join('; ');
-                errors.push({
-                    row: index + 1,
-                    error: errorMessages || 'Validation failed',
-                });
-                continue;
-            }
-
             const { fullname, email, password, roll_no, registration_no, phone_number, photo_url } =
-                parsed.data;
+                parsed;
 
-            // Check for existing email
-            if (await prisma.user.findUnique({ where: { email } })) {
-                errors.push({
-                    row: index + 1,
-                    error: `Email "${email}" is already registered`,
-                });
+            if (emailSet.has(email)) {
+                errors.push({ row: index + 1, error: `Email "${email}" is already registered` });
                 continue;
             }
 
-            // Check for existing phone
-            if (await prisma.user.findUnique({ where: { phone_number } })) {
+            if (phone_number && phoneSet.has(phone_number)) {
                 errors.push({
                     row: index + 1,
                     error: `Phone number "${phone_number}" is already registered`,
@@ -323,8 +326,6 @@ export const bulkCreateStudentsCSVService = async (filePath, defaultSectionId, d
 
             const hashedPassword = await hashPassword(password);
             const stdId = await generateStudentId(section_id, batch_id);
-
-            // Upload photo to Cloudinary if provided
             const uploadedPhotoUrl = await uploadPhotoFromUrl(photo_url);
 
             const student = await prisma.user.create({
@@ -335,19 +336,14 @@ export const bulkCreateStudentsCSVService = async (filePath, defaultSectionId, d
                     role: 'STUDENT',
                     photo_url: uploadedPhotoUrl,
                     phone_number,
-                    student: {
-                        create: {
-                            stdId,
-                            roll_no,
-                            registration_no,
-                            section_id,
-                            batch_id,
-                        },
-                    },
+                    student: { create: { stdId, roll_no, registration_no, section_id, batch_id } },
                 },
                 select: userResponseSelect,
             });
 
+            // Track newly created emails/phones to prevent duplicates within the same batch
+            emailSet.add(email);
+            if (phone_number) phoneSet.add(phone_number);
             createdStudents.push(student);
         } catch (err) {
             errors.push({ row: index + 1, error: err.message });
@@ -382,48 +378,59 @@ export const bulkCreateTeachersCSVService = async filePath => {
         throw new ApiError(400, 'The file is empty or contains no valid data.');
     }
 
+    // First pass: validate all rows
+    const validatedRows = [];
+    for (const [index, row] of rows.entries()) {
+        const normalizedRow = {};
+        Object.keys(row).forEach(key => {
+            normalizedRow[key.toLowerCase().trim()] = row[key];
+        });
+
+        const parsed = bulkTeacherRowSchema.safeParse(normalizedRow);
+        if (!parsed.success) {
+            const errorMessages = Object.entries(parsed.error.format())
+                .filter(([key]) => key !== '_errors')
+                .map(([field, err]) =>
+                    err._errors?.length > 0
+                        ? `${field}: ${err._errors.join(', ')}`
+                        : `${field}: Invalid value`,
+                )
+                .join('; ');
+            errors.push({ row: index + 1, error: errorMessages || 'Validation failed' });
+            continue;
+        }
+        validatedRows.push({ index, parsed: parsed.data });
+    }
+
+    // Batch-check existing emails and phones in ONE query each (avoid N+1)
+    const allEmails = validatedRows.map(r => r.parsed.email);
+    const allPhones = validatedRows.map(r => r.parsed.phone_number).filter(Boolean);
+
+    const [existingEmails, existingPhones] = await Promise.all([
+        prisma.user.findMany({ where: { email: { in: allEmails } }, select: { email: true } }),
+        allPhones.length > 0
+            ? prisma.user.findMany({
+                  where: { phone_number: { in: allPhones } },
+                  select: { phone_number: true },
+              })
+            : [],
+    ]);
+
+    const emailSet = new Set(existingEmails.map(u => u.email));
+    const phoneSet = new Set(existingPhones.map(u => u.phone_number));
+
     const createdTeachers = [];
 
-    for (const [index, row] of rows.entries()) {
+    for (const { index, parsed } of validatedRows) {
         try {
-            // Normalize row keys to lowercase
-            const normalizedRow = {};
-            Object.keys(row).forEach(key => {
-                normalizedRow[key.toLowerCase().trim()] = row[key];
-            });
+            const { fullname, email, password, designation, phone_number, photo_url } = parsed;
 
-            // Validate row using Zod
-            const parsed = bulkTeacherRowSchema.safeParse(normalizedRow);
-            if (!parsed.success) {
-                const errorMessages = Object.entries(parsed.error.format())
-                    .filter(([key]) => key !== '_errors')
-                    .map(([field, err]) => {
-                        if (err._errors && err._errors.length > 0) {
-                            return `${field}: ${err._errors.join(', ')}`;
-                        }
-                        return `${field}: Invalid value`;
-                    })
-                    .join('; ');
-                errors.push({
-                    row: index + 1,
-                    error: errorMessages || 'Validation failed',
-                });
+            if (emailSet.has(email)) {
+                errors.push({ row: index + 1, error: `Email "${email}" is already registered` });
                 continue;
             }
 
-            const { fullname, email, password, designation, phone_number, photo_url } = parsed.data;
-
-            // Check for existing email
-            if (await prisma.user.findUnique({ where: { email } })) {
-                errors.push({
-                    row: index + 1,
-                    error: `Email "${email}" is already registered`,
-                });
-                continue;
-            }
-
-            // Check for existing phone
-            if (await prisma.user.findUnique({ where: { phone_number } })) {
+            if (phone_number && phoneSet.has(phone_number)) {
                 errors.push({
                     row: index + 1,
                     error: `Phone number "${phone_number}" is already registered`,
@@ -433,8 +440,6 @@ export const bulkCreateTeachersCSVService = async filePath => {
 
             const hashedPassword = await hashPassword(password);
             const teacherId = await generateTeacherId();
-
-            // Upload photo to Cloudinary if provided
             const uploadedPhotoUrl = await uploadPhotoFromUrl(photo_url);
 
             const teacher = await prisma.user.create({
@@ -450,6 +455,8 @@ export const bulkCreateTeachersCSVService = async filePath => {
                 select: userResponseSelect,
             });
 
+            emailSet.add(email);
+            if (phone_number) phoneSet.add(phone_number);
             createdTeachers.push(teacher);
         } catch (err) {
             errors.push({ row: index + 1, error: err.message });
@@ -473,6 +480,7 @@ export const bulkCreateTeachersCSVService = async filePath => {
 ================================ */
 export const getAllUsersService = async (filters = {}) => {
     const { search, role } = filters;
+    const pagination = parsePagination(filters);
     const where = {};
 
     // Search by name or email
@@ -488,18 +496,25 @@ export const getAllUsersService = async (filters = {}) => {
         where.role = role;
     }
 
-    return prisma.user.findMany({
-        where,
-        select: {
-            id: true,
-            fullname: true,
-            email: true,
-            role: true,
-            is_active: true,
-            created_at: true,
-        },
-        orderBy: { created_at: 'desc' },
-    });
+    const [total, users] = await Promise.all([
+        prisma.user.count({ where }),
+        prisma.user.findMany({
+            where,
+            select: {
+                id: true,
+                fullname: true,
+                email: true,
+                role: true,
+                is_active: true,
+                created_at: true,
+            },
+            orderBy: { created_at: 'desc' },
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
+
+    return paginatedResponse(users, total, pagination);
 };
 
 /* ===============================
@@ -508,16 +523,33 @@ export const getAllUsersService = async (filters = {}) => {
 export const getUserByIdService = async id => {
     const user = await prisma.user.findUnique({
         where: { id },
-        include: {
+        select: {
+            id: true,
+            fullname: true,
+            email: true,
+            role: true,
+            phone_number: true,
+            photo_url: true,
+            is_active: true,
+            created_at: true,
             student: {
-                include: {
-                    batch: true,
+                select: {
+                    id: true,
+                    stdId: true,
+                    roll_no: true,
+                    registration_no: true,
+                    current_semester: true,
+                    batch: { select: { id: true, name: true, start_year: true, end_year: true } },
                     section: {
-                        include: {
-                            department: true,
+                        select: {
+                            id: true,
+                            name: true,
+                            department: { select: { id: true, name: true } },
                             semester: {
-                                include: {
-                                    department: true,
+                                select: {
+                                    id: true,
+                                    number: true,
+                                    department: { select: { id: true, name: true } },
                                 },
                             },
                         },
@@ -525,15 +557,21 @@ export const getUserByIdService = async id => {
                 },
             },
             teacher: {
-                include: {
+                select: {
+                    id: true,
+                    teacherId: true,
+                    designation: true,
                     teaching_assignments: {
                         where: { is_deleted: false },
-                        include: {
-                            subject: true,
+                        select: {
+                            id: true,
+                            subject: { select: { id: true, name: true, code: true } },
                             section: {
-                                include: {
-                                    department: true,
-                                    semester: true,
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    department: { select: { id: true, name: true } },
+                                    semester: { select: { id: true, number: true } },
                                 },
                             },
                         },
@@ -552,6 +590,7 @@ export const getUserByIdService = async id => {
 ================================ */
 export const getAllStudentsService = async (filters = {}) => {
     const { department_id, semester_id, section_id, is_active } = filters;
+    const pagination = parsePagination(filters);
 
     const where = { is_deleted: false };
 
@@ -568,16 +607,34 @@ export const getAllStudentsService = async (filters = {}) => {
         where.user = { is_active: is_active === 'true' || is_active === true };
     }
 
-    return prisma.student.findMany({
-        where,
-        include: {
-            user: { select: { ...userBasicSelect, is_active: true } },
-            section: {
-                include: { department: true, semester: true },
+    const [total, students] = await Promise.all([
+        prisma.student.count({ where }),
+        prisma.student.findMany({
+            where,
+            select: {
+                id: true,
+                stdId: true,
+                roll_no: true,
+                current_semester: true,
+                user: {
+                    select: { ...userBasicSelect, is_active: true },
+                },
+                section: {
+                    select: {
+                        id: true,
+                        name: true,
+                        department: { select: { id: true, name: true } },
+                        semester: { select: { id: true, number: true } },
+                    },
+                },
             },
-        },
-        orderBy: [{ section: { name: 'asc' } }, { roll_no: 'asc' }],
-    });
+            orderBy: [{ section: { name: 'asc' } }, { roll_no: 'asc' }],
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
+
+    return paginatedResponse(students, total, pagination);
 };
 
 /* ===============================
@@ -585,6 +642,7 @@ export const getAllStudentsService = async (filters = {}) => {
 ================================ */
 export const getAllTeachersService = async (filters = {}) => {
     const { is_active, designation } = filters;
+    const pagination = parsePagination(filters);
 
     const where = { is_deleted: false };
 
@@ -593,17 +651,28 @@ export const getAllTeachersService = async (filters = {}) => {
         where.user = { is_active: is_active === 'true' || is_active === true };
     }
 
-    return prisma.teacher.findMany({
-        where,
-        include: {
-            user: { select: { ...userBasicSelect, is_active: true } },
-            teaching_assignments: {
-                where: { is_deleted: false },
-                select: { id: true, subject: true, section: true },
+    const [total, teachers] = await Promise.all([
+        prisma.teacher.count({ where }),
+        prisma.teacher.findMany({
+            where,
+            select: {
+                id: true,
+                teacherId: true,
+                designation: true,
+                user: {
+                    select: { ...userBasicSelect, is_active: true },
+                },
+                _count: {
+                    select: { teaching_assignments: { where: { is_deleted: false } } },
+                },
             },
-        },
-        orderBy: { user: { fullname: 'asc' } },
-    });
+            orderBy: { user: { fullname: 'asc' } },
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
+
+    return paginatedResponse(teachers, total, pagination);
 };
 
 /* ===============================
@@ -719,7 +788,7 @@ export const deleteAdminService = async id => {
         // Delete tokens and resets
         await tx.refreshToken.deleteMany({ where: { userId: id } });
         await tx.passwordReset.deleteMany({ where: { userId: id } });
-        
+
         // Delete activity logs where this user is the actor
         await tx.activityLog.deleteMany({ where: { user_id: id } });
 

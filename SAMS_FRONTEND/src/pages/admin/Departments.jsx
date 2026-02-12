@@ -30,7 +30,7 @@ const Departments = () => {
 
   const { data: departments, isLoading } = useQuery({
     queryKey: ["departments"],
-    queryFn: () => getAllDepartments(),
+    queryFn: () => getAllDepartments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 

@@ -11,16 +11,18 @@ import {
    GET STUDENT ATTENDANCE RECORDS
 ===================================================== */
 export const getMyAttendance = asyncHandler(async (req, res) => {
-    const { subject_id, start_date, end_date, status } = req.query;
+    const { subject_id, start_date, end_date, status, page, limit } = req.query;
 
-    const data = await getStudentAttendanceService(req.user.student.id, {
+    const result = await getStudentAttendanceService(req.user.student.id, {
         subject_id,
         start_date,
         end_date,
         status,
+        page,
+        limit,
     });
 
-    res.status(200).json(new ApiResponse(200, data, 'Attendance records fetched'));
+    res.status(200).json(new ApiResponse(200, result, 'Attendance records fetched'));
 });
 
 /* =====================================================

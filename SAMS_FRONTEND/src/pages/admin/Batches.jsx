@@ -16,6 +16,7 @@ import {
 } from "../../api/admin.api";
 import AlertMessage from "../../components/common/AlertMessage";
 import ConfirmModal from "../../components/common/ConfirmModal";
+import Pagination from "../../components/common/Pagination";
 
 const getCurrentBSYear = () => {
   const today = new Date();
@@ -43,16 +44,19 @@ const Batches = () => {
     id: null,
     name: "",
   });
+  const [page, setPage] = useState(1);
 
-  const { data: batches, isLoading } = useQuery({
-    queryKey: ["batches"],
-    queryFn: () => getAllBatches(),
-    select: (res) => res.data.data,
+  const { data: batchesData, isLoading } = useQuery({
+    queryKey: ["batches", page],
+    queryFn: () => getAllBatches({ page, limit: 20 }),
+    select: (res) => ({ data: res.data.data, pagination: res.data.pagination }),
   });
+  const batches = batchesData?.data;
+  const batchesPagination = batchesData?.pagination;
 
   const { data: departments } = useQuery({
     queryKey: ["departments"],
-    queryFn: () => getAllDepartments(),
+    queryFn: () => getAllDepartments({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
@@ -330,6 +334,7 @@ const Batches = () => {
             </tbody>
           </table>
         </div>
+        <Pagination pagination={batchesPagination} onPageChange={setPage} />
       </div>
 
       {/* Modal */}

@@ -1,6 +1,6 @@
 import prisma from '../../config/prisma.js';
 import ApiError from '../../utils/ApiError.utils.js';
-import { userMinimalSelect, sectionWithDeptSemInclude } from '../../utils/prisma.selects.js';
+import { userMinimalSelect } from '../../utils/prisma.selects.js';
 
 /* =====================================================
    GET ATTENDANCE REPORT
@@ -14,12 +14,14 @@ export const getAttendanceReportService = async (filters = {}) => {
     if (department_id) sectionWhere.department_id = department_id;
     if (semester_id) sectionWhere.semester_id = semester_id;
 
-    // 2. Fetch Sections (lightweight, no students nested yet)
+    // 2. Fetch Sections (lightweight)
     const sections = await prisma.section.findMany({
         where: sectionWhere,
-        include: {
-            department: true,
-            semester: true,
+        select: {
+            id: true,
+            name: true,
+            department: { select: { id: true, name: true } },
+            semester: { select: { id: true, name: true, number: true } },
         },
     });
 
@@ -133,8 +135,7 @@ export const getAttendanceReportService = async (filters = {}) => {
         };
     });
 
-    const avgAttendance =
-        totalRecordsSum > 0 ? (totalPresentSum / totalRecordsSum) * 100 : 0;
+    const avgAttendance = totalRecordsSum > 0 ? (totalPresentSum / totalRecordsSum) * 100 : 0;
     const lowAttendanceCount = studentData.filter(s => s.attendancePercentage < 80).length;
 
     return {
@@ -200,18 +201,26 @@ export const getDepartmentAttendanceReportService = async (filters = {}) => {
 
     const departments = await prisma.department.findMany({
         where: departmentWhere,
-        include: {
+        select: {
+            id: true,
+            name: true,
             sections: {
                 where: {
                     is_deleted: false,
                     ...(semester_id && { semester_id }),
                     ...(section_id && { id: section_id }),
                 },
-                include: {
-                    semester: true,
+                select: {
+                    id: true,
+                    name: true,
+                    semester: { select: { id: true, name: true, number: true } },
                     students: {
                         where: { is_deleted: false },
-                        include: { user: { select: userMinimalSelect } },
+                        select: {
+                            id: true,
+                            roll_no: true,
+                            user: { select: userMinimalSelect },
+                        },
                     },
                 },
             },
@@ -220,6 +229,9 @@ export const getDepartmentAttendanceReportService = async (filters = {}) => {
 
     // Build where clause for attendance sessions - Get all sessions at once
     const sectionIds = departments.flatMap(dept => dept.sections.map(s => s.id));
+
+    if (sectionIds.length === 0) return [];
+
     const sessionWhere = {
         is_deleted: false,
         teaching_assignment: {
@@ -234,24 +246,88 @@ export const getDepartmentAttendanceReportService = async (filters = {}) => {
         if (end_date) sessionWhere.session_date.lte = new Date(end_date);
     }
 
-    // Fetch all sessions at once instead of per-section
+    // Fetch sessions with only needed fields (avoid loading full records with select)
     const allSessions = await prisma.attendanceSession.findMany({
         where: sessionWhere,
-        include: {
-            teaching_assignment: { include: { subject: true, section: true } },
-            records: { where: { is_deleted: false } },
+        select: {
+            id: true,
+            teaching_assignment: {
+                select: {
+                    section_id: true,
+                    subject_id: true,
+                    subject: { select: { name: true } },
+                },
+            },
         },
     });
 
-    // Group sessions by section for easier processing
-    const sessionsBySection = new Map();
-    allSessions.forEach(session => {
+    // Collect session IDs and build session-to-section/subject mapping
+    const sessionIds = allSessions.map(s => s.id);
+
+    // Group sessions by section + subject for counting
+    const sessionsBySection = new Map(); // sectionId -> Map<subjectId, { subjectName, totalSessions }>
+    for (const session of allSessions) {
         const sectionId = session.teaching_assignment.section_id;
-        if (!sessionsBySection.has(sectionId)) {
-            sessionsBySection.set(sectionId, []);
+        const subjectId = session.teaching_assignment.subject_id;
+        const subjectName = session.teaching_assignment.subject?.name || 'Unknown';
+
+        if (!sessionsBySection.has(sectionId)) sessionsBySection.set(sectionId, new Map());
+        const subjectMap = sessionsBySection.get(sectionId);
+        if (!subjectMap.has(subjectId)) {
+            subjectMap.set(subjectId, { subjectId, subjectName, totalSessions: 0 });
         }
-        sessionsBySection.get(sectionId).push(session);
+        subjectMap.get(subjectId).totalSessions++;
+    }
+
+    // Use groupBy for attendance records instead of loading ALL records
+    const recordStats = await prisma.attendanceRecord.groupBy({
+        by: ['student_id', 'status'],
+        where: {
+            is_deleted: false,
+            session_id: { in: sessionIds },
+        },
+        _count: { status: true },
     });
+
+    // We also need per-subject stats, so fetch with session info
+    // Use a single query with select to get student_id, status, and session's subject
+    const recordsWithSubject = await prisma.attendanceRecord.findMany({
+        where: {
+            is_deleted: false,
+            session_id: { in: sessionIds },
+        },
+        select: {
+            student_id: true,
+            status: true,
+            session: {
+                select: {
+                    teaching_assignment: {
+                        select: { section_id: true, subject_id: true },
+                    },
+                },
+            },
+        },
+    });
+
+    // Build nested map: sectionId -> subjectId -> studentId -> { present, absent, total }
+    const statsMap = new Map();
+    for (const record of recordsWithSubject) {
+        const sectionId = record.session.teaching_assignment.section_id;
+        const subjectId = record.session.teaching_assignment.subject_id;
+        const studentId = record.student_id;
+
+        if (!statsMap.has(sectionId)) statsMap.set(sectionId, new Map());
+        const sectionMap = statsMap.get(sectionId);
+        if (!sectionMap.has(subjectId)) sectionMap.set(subjectId, new Map());
+        const subjectStats = sectionMap.get(subjectId);
+        if (!subjectStats.has(studentId))
+            subjectStats.set(studentId, { present: 0, absent: 0, total: 0 });
+
+        const sr = subjectStats.get(studentId);
+        sr.total++;
+        if (record.status === 'PRESENT') sr.present++;
+        else if (record.status === 'ABSENT') sr.absent++;
+    }
 
     const result = [];
 
@@ -263,42 +339,8 @@ export const getDepartmentAttendanceReportService = async (filters = {}) => {
         };
 
         for (const section of dept.sections) {
-            // Get sessions for this section from our map
-            const sessions = sessionsBySection.get(section.id) || [];
-
-            // Group by subject
-            const subjectMap = new Map();
-
-            for (const session of sessions) {
-                const subjectId = session.teaching_assignment.subject_id;
-                const subjectName = session.teaching_assignment.subject?.name || 'Unknown';
-
-                if (!subjectMap.has(subjectId)) {
-                    subjectMap.set(subjectId, {
-                        subjectId,
-                        subjectName,
-                        totalSessions: 0,
-                        studentRecords: new Map(),
-                    });
-                }
-
-                const subjectData = subjectMap.get(subjectId);
-                subjectData.totalSessions++;
-
-                for (const record of session.records) {
-                    if (!subjectData.studentRecords.has(record.student_id)) {
-                        subjectData.studentRecords.set(record.student_id, {
-                            present: 0,
-                            absent: 0,
-                            total: 0,
-                        });
-                    }
-                    const sr = subjectData.studentRecords.get(record.student_id);
-                    sr.total++;
-                    if (record.status === 'PRESENT') sr.present++;
-                    else if (record.status === 'ABSENT') sr.absent++;
-                }
-            }
+            const subjectMap = sessionsBySection.get(section.id) || new Map();
+            const sectionStats = statsMap.get(section.id) || new Map();
 
             const sectionData = {
                 sectionId: section.id,
@@ -308,9 +350,11 @@ export const getDepartmentAttendanceReportService = async (filters = {}) => {
                 subjects: [],
             };
 
-            for (const [, subjectData] of subjectMap) {
+            for (const [subjectId, subjectInfo] of subjectMap) {
+                const subjectStudentStats = sectionStats.get(subjectId) || new Map();
+
                 const students = section.students.map(student => {
-                    const record = subjectData.studentRecords.get(student.id) || {
+                    const record = subjectStudentStats.get(student.id) || {
                         present: 0,
                         absent: 0,
                         total: 0,
@@ -331,9 +375,9 @@ export const getDepartmentAttendanceReportService = async (filters = {}) => {
                 });
 
                 sectionData.subjects.push({
-                    subjectId: subjectData.subjectId,
-                    subjectName: subjectData.subjectName,
-                    totalSessions: subjectData.totalSessions,
+                    subjectId: subjectInfo.subjectId,
+                    subjectName: subjectInfo.subjectName,
+                    totalSessions: subjectInfo.totalSessions,
                     students,
                 });
             }

@@ -30,10 +30,12 @@ export const getAllAttendanceSessions = asyncHandler(async (req, res) => {
         teacher_id: req.query.teacher_id,
         start_date: req.query.start_date,
         end_date: req.query.end_date,
+        page: req.query.page,
+        limit: req.query.limit,
     };
 
-    const sessions = await getAllAttendanceSessionsService(filters);
-    res.status(200).json(new ApiResponse(200, sessions, 'Attendance sessions fetched'));
+    const result = await getAllAttendanceSessionsService(filters);
+    res.status(200).json(new ApiResponse(200, result, 'Attendance sessions fetched'));
 });
 
 /* =====================================================

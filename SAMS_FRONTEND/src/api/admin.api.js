@@ -364,6 +364,16 @@ export const deleteSubject = (id) => {
   return axiosInstance.delete(`/admin/subjects/${id}`);
 };
 
+/**
+ * Bulk Create Subjects from CSV/Excel
+ * POST /admin/subjects/bulk
+ */
+export const bulkCreateSubjects = (formData) => {
+  return axiosInstance.post("/admin/subjects/bulk", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+};
+
 /* =====================================================
    TEACHING ASSIGNMENTS
 ===================================================== */

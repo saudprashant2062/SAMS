@@ -109,15 +109,23 @@ const StudentSubjects = () => {
               <div className="p-4 space-y-4">
                 {/* Teacher Info */}
                 <div className="flex items-center gap-3">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium"
-                    style={{
-                      backgroundColor: "var(--primary-light)",
-                      color: "var(--primary)",
-                    }}
-                  >
-                    {subject.teacher?.charAt(0) || "T"}
-                  </div>
+                  {subject.teacherPhoto ? (
+                    <img
+                      src={subject.teacherPhoto}
+                      alt={subject.teacher}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium"
+                      style={{
+                        backgroundColor: "var(--primary-light)",
+                        color: "var(--primary)",
+                      }}
+                    >
+                      {subject.teacher?.charAt(0) || "T"}
+                    </div>
+                  )}
                   <div>
                     <p
                       className="text-xs"

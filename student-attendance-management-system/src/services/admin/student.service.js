@@ -1,6 +1,7 @@
 import prisma from '../../config/prisma.js';
 import ApiError from '../../utils/ApiError.utils.js';
 import bcrypt from '../../utils/bcrypt.js';
+import { parsePagination, paginatedResponse } from '../../utils/pagination.utils.js';
 
 /* ============================================================
    STUDENT SERVICE - Updated for Batch Context
@@ -118,7 +119,7 @@ export const createStudentService = async (data, userData) => {
     return student;
 };
 
-/* ---------- GET ALL ---------- */
+/* ---------- GET ALL (OPTIMIZED with pagination + select) ---------- */
 export const getAllStudentsService = async (filters = {}) => {
     const {
         department_id,
@@ -128,6 +129,7 @@ export const getAllStudentsService = async (filters = {}) => {
         search,
         is_deleted = false,
     } = filters;
+    const pagination = parsePagination(filters);
 
     const where = {
         is_deleted,
@@ -148,44 +150,64 @@ export const getAllStudentsService = async (filters = {}) => {
         }),
     };
 
-    return await prisma.student.findMany({
-        where,
-        include: {
-            user: {
-                select: {
-                    id: true,
-                    fullname: true,
-                    email: true,
-                    phone_number: true,
-                    photo_url: true,
-                    is_active: true,
+    const [total, students] = await Promise.all([
+        prisma.student.count({ where }),
+        prisma.student.findMany({
+            where,
+            select: {
+                id: true,
+                stdId: true,
+                roll_no: true,
+                registration_no: true,
+                current_semester: true,
+                user: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        email: true,
+                        phone_number: true,
+                        photo_url: true,
+                        is_active: true,
+                    },
+                },
+                section: {
+                    select: {
+                        id: true,
+                        name: true,
+                        department: { select: { id: true, name: true } },
+                        semester: { select: { id: true, number: true } },
+                    },
+                },
+                batch: {
+                    select: {
+                        id: true,
+                        name: true,
+                        start_year: true,
+                        end_year: true,
+                    },
                 },
             },
-            section: {
-                include: {
-                    department: true,
-                    semester: true,
-                },
-            },
-            batch: true,
-        },
-        orderBy: [{ section: { name: 'asc' } }, { roll_no: 'asc' }],
-    });
+            orderBy: [{ section: { name: 'asc' } }, { roll_no: 'asc' }],
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
+
+    return paginatedResponse(students, total, pagination);
 };
 
-/* ---------- GET BY ID ---------- */
+/* ---------- GET BY ID (OPTIMIZED - single query instead of two) ---------- */
 export const getStudentByIdService = async id => {
     const student = await prisma.student.findUnique({
         where: { id },
-    });
-
-    if (!student || student.is_deleted) {
-        throw new ApiError(404, 'Student not found');
-    }
-
-    return await prisma.student.findUnique({
-        where: { id },
-        include: {
+        select: {
+            id: true,
+            stdId: true,
+            roll_no: true,
+            registration_no: true,
+            current_semester: true,
+            is_deleted: true,
+            user_id: true,
             user: {
                 select: {
                     id: true,
@@ -197,31 +219,45 @@ export const getStudentByIdService = async id => {
                 },
             },
             section: {
-                include: {
-                    department: true,
-                    semester: true,
-                    batch: true,
+                select: {
+                    id: true,
+                    name: true,
+                    department: { select: { id: true, name: true } },
+                    semester: { select: { id: true, number: true } },
+                    batch: { select: { id: true, name: true, start_year: true, end_year: true } },
                 },
             },
-            batch: true,
+            batch: {
+                select: { id: true, name: true, start_year: true, end_year: true },
+            },
             attendance: {
                 where: { is_deleted: false },
-                include: {
+                select: {
+                    id: true,
+                    status: true,
                     session: {
-                        include: {
+                        select: {
+                            session_date: true,
                             teaching_assignment: {
-                                include: {
-                                    subject: true,
-                                    section: true,
+                                select: {
+                                    subject: { select: { id: true, name: true } },
+                                    section: { select: { id: true, name: true } },
                                 },
                             },
                         },
                     },
                 },
                 orderBy: { session: { session_date: 'desc' } },
+                take: 50, // Limit recent attendance records for performance
             },
         },
     });
+
+    if (!student || student.is_deleted) {
+        throw new ApiError(404, 'Student not found');
+    }
+
+    return student;
 };
 
 /* ---------- UPDATE ---------- */
@@ -380,61 +416,96 @@ export const promoteStudentService = async (id, targetSectionId) => {
     });
 };
 
-/* ---------- GET STUDENTS BY SECTION ---------- */
-export const getStudentsBySectionService = async sectionId => {
-    return await prisma.student.findMany({
-        where: {
-            section_id: sectionId,
-            is_deleted: false,
-        },
-        include: {
-            user: {
-                select: {
-                    id: true,
-                    fullname: true,
-                    email: true,
-                    phone_number: true,
-                    photo_url: true,
+/* ---------- GET STUDENTS BY SECTION (OPTIMIZED with pagination + select) ---------- */
+export const getStudentsBySectionService = async (sectionId, filters = {}) => {
+    const pagination = parsePagination(filters);
+
+    const where = {
+        section_id: sectionId,
+        is_deleted: false,
+    };
+
+    const [total, students] = await Promise.all([
+        prisma.student.count({ where }),
+        prisma.student.findMany({
+            where,
+            select: {
+                id: true,
+                stdId: true,
+                roll_no: true,
+                registration_no: true,
+                current_semester: true,
+                user: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        email: true,
+                        phone_number: true,
+                        photo_url: true,
+                    },
+                },
+                section: {
+                    select: {
+                        id: true,
+                        name: true,
+                        department: { select: { id: true, name: true } },
+                        semester: { select: { id: true, number: true } },
+                        batch: { select: { id: true, name: true } },
+                    },
+                },
+                batch: {
+                    select: { id: true, name: true, start_year: true, end_year: true },
                 },
             },
-            section: {
-                include: {
-                    department: true,
-                    semester: true,
-                    batch: true,
-                },
-            },
-            batch: true,
-        },
-        orderBy: { roll_no: 'asc' },
-    });
+            orderBy: { roll_no: 'asc' },
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
+
+    return paginatedResponse(students, total, pagination);
 };
 
-/* ---------- GET STUDENTS BY BATCH ---------- */
-export const getStudentsByBatchService = async (batchId, semesterNumber = null) => {
+/* ---------- GET STUDENTS BY BATCH (OPTIMIZED with pagination + select) ---------- */
+export const getStudentsByBatchService = async (batchId, semesterNumber = null, filters = {}) => {
+    const pagination = parsePagination(filters);
+
     const where = {
         batch_id: batchId,
         is_deleted: false,
         ...(semesterNumber && { current_semester: semesterNumber }),
     };
 
-    return await prisma.student.findMany({
-        where,
-        include: {
-            user: {
-                select: {
-                    id: true,
-                    fullname: true,
-                    email: true,
+    const [total, students] = await Promise.all([
+        prisma.student.count({ where }),
+        prisma.student.findMany({
+            where,
+            select: {
+                id: true,
+                stdId: true,
+                roll_no: true,
+                current_semester: true,
+                user: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        email: true,
+                    },
+                },
+                section: {
+                    select: {
+                        id: true,
+                        name: true,
+                        department: { select: { id: true, name: true } },
+                        semester: { select: { id: true, number: true } },
+                    },
                 },
             },
-            section: {
-                include: {
-                    department: true,
-                    semester: true,
-                },
-            },
-        },
-        orderBy: [{ section: { name: 'asc' } }, { roll_no: 'asc' }],
-    });
+            orderBy: [{ section: { name: 'asc' } }, { roll_no: 'asc' }],
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
+
+    return paginatedResponse(students, total, pagination);
 };

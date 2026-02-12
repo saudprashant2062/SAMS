@@ -130,9 +130,9 @@ export const bulkCreateTeachersCSV = asyncHandler(async (req, res) => {
    GET ALL USERS
 ================================ */
 export const getAllUsers = asyncHandler(async (req, res) => {
-    const { search, role } = req.query;
-    const users = await getAllUsersService({ search, role });
-    res.status(200).json(new ApiResponse(200, users, 'Users fetched'));
+    const { search, role, page, limit } = req.query;
+    const result = await getAllUsersService({ search, role, page, limit });
+    res.status(200).json(new ApiResponse(200, result, 'Users fetched'));
 });
 
 /* ===============================
@@ -160,16 +160,16 @@ export const getUserById = asyncHandler(async (req, res) => {
    Query params: department_id, semester_id, section_id, is_active
 ================================ */
 export const getAllStudents = asyncHandler(async (req, res) => {
-    const { department_id, semester_id, section_id, is_active } = req.query;
-    const students = await getAllStudentsService({
+    const { department_id, semester_id, section_id, is_active, page, limit } = req.query;
+    const result = await getAllStudentsService({
         department_id,
         semester_id,
         section_id,
         is_active,
+        page,
+        limit,
     });
-    res.status(200).json(
-        new ApiResponse(200, { students, count: students.length }, 'Students fetched'),
-    );
+    res.status(200).json(new ApiResponse(200, result, 'Students fetched'));
 });
 
 /* ===============================
@@ -177,11 +177,9 @@ export const getAllStudents = asyncHandler(async (req, res) => {
    Query params: is_active, designation
 ================================ */
 export const getAllTeachers = asyncHandler(async (req, res) => {
-    const { is_active, designation } = req.query;
-    const teachers = await getAllTeachersService({ is_active, designation });
-    res.status(200).json(
-        new ApiResponse(200, { teachers, count: teachers.length }, 'Teachers fetched'),
-    );
+    const { is_active, designation, page, limit } = req.query;
+    const result = await getAllTeachersService({ is_active, designation, page, limit });
+    res.status(200).json(new ApiResponse(200, result, 'Teachers fetched'));
 });
 
 /* ===============================

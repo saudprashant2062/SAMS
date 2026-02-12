@@ -2,6 +2,11 @@ import prisma from '../../config/prisma.js';
 import ApiError from '../../utils/ApiError.utils.js';
 import { validateBody } from '../../utils/validate.utils.js';
 import { createBatchSchema, updateBatchSchema } from '../../validators/batch.validator.js';
+import {
+    parsePagination,
+    paginatedResponse,
+    buildPaginationMeta,
+} from '../../utils/pagination.utils.js';
 
 /* ---------- CREATE ---------- */
 export const createBatchService = async data => {
@@ -15,7 +20,8 @@ export const createBatchService = async data => {
     const exists = await prisma.batch.findFirst({
         where: { start_year, department_id },
     });
-    if (exists) throw new ApiError(409, 'Batch with this start year already exists for this department');
+    if (exists)
+        throw new ApiError(409, 'Batch with this start year already exists for this department');
 
     const created = await prisma.batch.create({
         data: {
@@ -24,8 +30,13 @@ export const createBatchService = async data => {
             start_year,
             end_year,
         },
-        include: {
-            department: true,
+        select: {
+            id: true,
+            name: true,
+            start_year: true,
+            end_year: true,
+            created_at: true,
+            department: { select: { id: true, name: true } },
         },
     });
 
@@ -35,61 +46,98 @@ export const createBatchService = async data => {
 /* ---------- GET ALL ---------- */
 export const getAllBatchesService = async (filters = {}) => {
     const { department_id } = filters;
+    const pagination = parsePagination(filters);
 
     const whereClause = { is_deleted: false };
     if (department_id) {
         whereClause.department_id = department_id;
     }
 
-    const batches = await prisma.batch.findMany({
-        where: whereClause,
-        include: {
-            department: true,
-            _count: {
-                select: { students: { where: { is_deleted: false } } },
+    const [total, batches] = await Promise.all([
+        prisma.batch.count({ where: whereClause }),
+        prisma.batch.findMany({
+            where: whereClause,
+            select: {
+                id: true,
+                name: true,
+                department_id: true,
+                start_year: true,
+                end_year: true,
+                created_at: true,
+                department: { select: { id: true, name: true } },
+                _count: { select: { students: { where: { is_deleted: false } } } },
             },
-        },
-        orderBy: { start_year: 'desc' },
-    });
+            orderBy: { start_year: 'desc' },
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
 
-    return batches;
+    return paginatedResponse(batches, total, pagination);
 };
 
 /* ---------- GET BY ID ---------- */
-export const getBatchByIdService = async id => {
+export const getBatchByIdService = async (id, filters = {}) => {
+    const pagination = parsePagination(filters);
+
     const batch = await prisma.batch.findUnique({
         where: { id },
-        include: {
-            department: true,
-            students: {
-                where: { is_deleted: false },
-                include: {
-                    user: {
-                        select: {
-                            id: true,
-                            fullname: true,
-                            email: true,
-                            phone_number: true,
-                            photo_url: true,
-                            is_active: true,
-                        },
-                    },
-                    section: {
-                        include: {
-                            department: true,
-                            semester: true,
-                        },
-                    },
-                },
-                orderBy: { roll_no: 'asc' },
-            },
-            _count: {
-                select: { students: { where: { is_deleted: false } } },
-            },
+        select: {
+            id: true,
+            name: true,
+            start_year: true,
+            end_year: true,
+            is_deleted: true,
+            created_at: true,
+            department: { select: { id: true, name: true } },
+            _count: { select: { students: { where: { is_deleted: false } } } },
         },
     });
     if (!batch || batch.is_deleted) throw new ApiError(404, 'Batch not found');
-    return batch;
+
+    const [totalStudents, students] = await Promise.all([
+        prisma.student.count({ where: { batch_id: id, is_deleted: false } }),
+        prisma.student.findMany({
+            where: { batch_id: id, is_deleted: false },
+            select: {
+                id: true,
+                stdId: true,
+                roll_no: true,
+                current_semester: true,
+                user: {
+                    select: {
+                        id: true,
+                        fullname: true,
+                        email: true,
+                        phone_number: true,
+                        photo_url: true,
+                        is_active: true,
+                    },
+                },
+                section: {
+                    select: {
+                        id: true,
+                        name: true,
+                        department: { select: { id: true, name: true } },
+                        semester: { select: { id: true, number: true } },
+                    },
+                },
+            },
+            orderBy: { roll_no: 'asc' },
+            skip: pagination.skip,
+            take: pagination.take,
+        }),
+    ]);
+
+    return {
+        ...batch,
+        students,
+        studentsPagination: buildPaginationMeta({
+            total: totalStudents,
+            page: pagination.page,
+            limit: pagination.limit,
+        }),
+    };
 };
 
 /* ---------- UPDATE ---------- */
@@ -115,7 +163,11 @@ export const updateBatchService = async (id, data) => {
                 id: { not: id },
             },
         });
-        if (exists) throw new ApiError(409, 'Batch with this start year already exists for this department');
+        if (exists)
+            throw new ApiError(
+                409,
+                'Batch with this start year already exists for this department',
+            );
     }
 
     const updated = await prisma.batch.update({
@@ -126,8 +178,13 @@ export const updateBatchService = async (id, data) => {
             ...(start_year && { start_year }),
             ...(end_year && { end_year }),
         },
-        include: {
-            department: true,
+        select: {
+            id: true,
+            name: true,
+            start_year: true,
+            end_year: true,
+            created_at: true,
+            department: { select: { id: true, name: true } },
         },
     });
 
