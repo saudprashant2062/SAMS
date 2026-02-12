@@ -21,6 +21,10 @@ const getInitialState = () => {
       user,
       accessToken: null, // Access token will be managed via httpOnly cookies
       isAuthenticated: !!user,
+      // 3-state auth status: 'loading' | 'authenticated' | 'unauthenticated'
+      // Start as 'loading' if user data exists in localStorage (needs server verification)
+      // Start as 'unauthenticated' if no user data exists
+      authStatus: user ? "loading" : "unauthenticated",
     };
   } catch {
     // localStorage access failed (e.g., private browsing)
@@ -28,6 +32,7 @@ const getInitialState = () => {
       user: null,
       accessToken: null,
       isAuthenticated: false,
+      authStatus: "unauthenticated",
     };
   }
 };
@@ -43,6 +48,7 @@ const authSlice = createSlice({
       state.user = user;
       state.accessToken = accessToken; // Keep in memory for backward compatibility
       state.isAuthenticated = true;
+      state.authStatus = "authenticated";
 
       // Only persist user data to localStorage (not the token)
       localStorage.setItem("user", JSON.stringify(user));
@@ -61,6 +67,7 @@ const authSlice = createSlice({
       state.user = null;
       state.accessToken = null;
       state.isAuthenticated = false;
+      state.authStatus = "unauthenticated";
 
       // Clear localStorage
       localStorage.removeItem("user");

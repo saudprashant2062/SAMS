@@ -1,6 +1,26 @@
-import { Outlet } from "react-router-dom";
+import { Navigate, Outlet } from "react-router-dom";
+import { useSelector } from "react-redux";
+import {
+  selectIsAuthenticated,
+  selectUserRole,
+  selectAuthStatus,
+} from "../features/auth/auth.selector";
+import { getDashboardPath } from "../utils/roleRedirect";
 
 const AuthLayout = () => {
+  const isAuthenticated = useSelector(selectIsAuthenticated);
+  const userRole = useSelector(selectUserRole);
+  const authStatus = useSelector(selectAuthStatus);
+
+  // Still verifying auth — don't render anything yet
+  if (authStatus === "loading") {
+    return null;
+  }
+
+  // Already logged in — redirect to dashboard
+  if (isAuthenticated) {
+    return <Navigate to={getDashboardPath(userRole)} replace />;
+  }
   return (
     <div
       className="min-h-screen flex flex-col lg:flex-row"

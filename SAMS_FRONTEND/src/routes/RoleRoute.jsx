@@ -3,6 +3,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import {
   selectIsAuthenticated,
   selectUserRole,
+  selectAuthStatus,
 } from "../features/auth/auth.selector";
 
 /**
@@ -12,7 +13,13 @@ import {
 const RoleRoute = ({ children, allowedRoles }) => {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const userRole = useSelector(selectUserRole);
+  const authStatus = useSelector(selectAuthStatus);
   const location = useLocation();
+
+  // Still checking auth — don't redirect yet
+  if (authStatus === "loading") {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;

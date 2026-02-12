@@ -12,3 +12,6 @@ export const selectAccessToken = (state) => state.auth.accessToken;
 
 // Select user role
 export const selectUserRole = (state) => state.auth.user?.role || null;
+
+// Select auth status ('loading' | 'authenticated' | 'unauthenticated')
+export const selectAuthStatus = (state) => state.auth.authStatus;

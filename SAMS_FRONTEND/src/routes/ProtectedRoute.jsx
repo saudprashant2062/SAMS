@@ -3,6 +3,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import {
   selectIsAuthenticated,
   selectUserRole,
+  selectAuthStatus,
 } from "../features/auth/auth.selector";
 
 /**
@@ -16,7 +17,13 @@ import {
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const userRole = useSelector(selectUserRole);
+  const authStatus = useSelector(selectAuthStatus);
   const location = useLocation();
+
+  // Still checking auth — don't redirect yet, show nothing (App.jsx shows loader)
+  if (authStatus === "loading") {
+    return null;
+  }
 
   // Not authenticated - redirect to login
   if (!isAuthenticated) {

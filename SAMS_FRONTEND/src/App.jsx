@@ -1,52 +1,66 @@
 import { BrowserRouter } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import AppRoutes from "./routes/AppRoutes";
-import { selectIsAuthenticated } from "./features/auth/auth.selector";
-import { logout, setCredentials } from "./features/auth/auth.slice";
+import { selectAuthStatus } from "./features/auth/auth.selector";
+import { setCredentials, logout } from "./features/auth/auth.slice";
 import { refreshToken, getMe } from "./api/auth.api";
 
 const App = () => {
   const dispatch = useDispatch();
-  const isAuthenticated = useSelector(selectIsAuthenticated);
-  const [isLoading, setIsLoading] = useState(true);
+  const authStatus = useSelector(selectAuthStatus);
 
+  // Reusable function to verify auth with server
+  const verifyAuth = useCallback(async () => {
+    // Check if user data exists in localStorage (indicates a previous session)
+    const storedUser = localStorage.getItem("user");
+    if (!storedUser) {
+      // No stored user — definitely not authenticated
+      dispatch(logout());
+      return;
+    }
+
+    try {
+      // Try to refresh access token (refresh token is in httpOnly cookie)
+      const refreshResponse = await refreshToken();
+      const newAccessToken = refreshResponse.data.data.accessToken;
+
+      // Get fresh user data from server
+      const userResponse = await getMe();
+      const user = userResponse.data.data;
+
+      dispatch(setCredentials({ user, accessToken: newAccessToken }));
+    } catch {
+      // Refresh failed — session is invalid, clean up
+      dispatch(logout());
+    }
+  }, [dispatch]);
+
+  // On app start: verify auth with server
   useEffect(() => {
-    const initAuth = async () => {
-      // If we have stored auth, verify it's still valid
-      if (isAuthenticated) {
-        try {
-          // Always try to refresh token first to ensure we have an accessToken in memory
-          // (Since getMe only verifies the cookie but doesn't return the token)
-          const refreshResponse = await refreshToken();
-          const newAccessToken = refreshResponse.data.data.accessToken;
-          
-          const userResponse = await getMe();
-          const user = userResponse.data.data;
-          
-          dispatch(setCredentials({ user, accessToken: newAccessToken }));
-        } catch (error) {
-          // If refresh fails, try getMe as fallback (maybe session is valid but no persistence?)
-          // But usually if refresh fails, we should logout
-          try {
-             // Optional: Check if getMe works without token (just cookie)
-             // If so, we might need to handle "cookie-only" mode, but better to logout if no token
-             await getMe();
-             // If getMe succeeds, we are technically logged in but have no token...
-             // This causes the 401 loop. So assume failed refresh = logout.
-             throw new Error("Token missing");
-          } catch (e) {
-             dispatch(logout());
-          }
+    verifyAuth();
+  }, [verifyAuth]);
+
+  // Cross-tab sync: listen for localStorage changes from other tabs
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      if (event.key === "user") {
+        if (!event.newValue) {
+          // User was removed in another tab → logout here too
+          dispatch(logout());
+        } else {
+          // User was updated in another tab → re-verify auth
+          verifyAuth();
         }
       }
-      setIsLoading(false);
     };
 
-    initAuth();
-  }, [dispatch, isAuthenticated]);
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [dispatch, verifyAuth]);
 
-  if (isLoading) {
+  // Show loading spinner while auth is being verified
+  if (authStatus === "loading") {
     return (
       <div
         className="min-h-screen flex items-center justify-center"
