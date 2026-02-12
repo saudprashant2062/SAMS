@@ -31,6 +31,12 @@ const app = express();
 /* ------------------------------
    GLOBAL MIDDLEWARES
 ------------------------------ */
+
+// Trust first proxy (Render, Railway, etc.) — required for secure cookies behind reverse proxy
+if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+}
+
 app.use(helmet());
 
 // CORS configuration - ensure FRONTEND_URL is set in production
