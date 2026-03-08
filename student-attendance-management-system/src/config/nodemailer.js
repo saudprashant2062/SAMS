@@ -1,27 +1,30 @@
 import nodemailer from 'nodemailer';
 
-// Create and configure nodemailer transporter
+// Create nodemailer transporter
 const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false, // true for 465, false for other ports
+    port: Number(process.env.EMAIL_PORT) || 587,
+    secure: false, // must be false for port 587
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD,
     },
+    tls: {
+        rejectUnauthorized: false,
+    },
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 20000,
 });
 
-// Verify transporter configuration
-transporter.verify((error, success) => {
-    if (error) {
-        if (process.env.NODE_ENV === 'development') {
-            console.error('Email configuration error:', error.message);
-        }
-    } else {
-        if (process.env.NODE_ENV === 'development') {
-            console.log('Email server is ready to send messages');
-        }
+// Verify connection to SMTP server
+(async () => {
+    try {
+        await transporter.verify();
+        console.log('Email server is ready to send messages');
+    } catch (error) {
+        console.error('Email configuration error:', error);
     }
-});
+})();
 
 export default transporter;

@@ -6,6 +6,7 @@ import {
   HiOutlineBookOpen,
 } from "react-icons/hi";
 import { getStudentSubjects } from "../../api/student.api";
+import { getFileUrl } from "../../utils/constants";
 
 const StudentSubjects = () => {
   const { data: subjects = [], isLoading } = useQuery({
@@ -111,7 +112,7 @@ const StudentSubjects = () => {
                 <div className="flex items-center gap-3">
                   {subject.teacherPhoto ? (
                     <img
-                      src={subject.teacherPhoto}
+                      src={getFileUrl(subject.teacherPhoto)}
                       alt={subject.teacher}
                       className="w-10 h-10 rounded-full object-cover"
                     />

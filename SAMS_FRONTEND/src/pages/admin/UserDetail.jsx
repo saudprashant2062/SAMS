@@ -15,6 +15,7 @@ import {
   HiOutlinePencil,
 } from "react-icons/hi";
 import { getUserById } from "../../api/admin.api";
+import { getFileUrl } from "../../utils/constants";
 
 const UserDetail = () => {
   const { id } = useParams();
@@ -224,7 +225,7 @@ const UserDetail = () => {
           <div className="text-center">
             {user.photo_url ? (
               <img
-                src={user.photo_url}
+                src={getFileUrl(user.photo_url)}
                 alt={user.fullname}
                 className="w-32 h-32 rounded-full mx-auto object-cover border-4"
                 style={{ borderColor: "var(--primary-light)" }}
@@ -581,7 +582,7 @@ const UserDetail = () => {
                 style={{ backgroundColor: "var(--bg-main)" }}
               >
                 <a
-                  href={user.photo_url}
+                  href={getFileUrl(user.photo_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:underline"

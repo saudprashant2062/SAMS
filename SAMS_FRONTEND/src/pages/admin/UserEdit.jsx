@@ -12,6 +12,7 @@ import {
   getAllSections,
   getAllDepartments,
 } from "../../api/admin.api";
+import { getFileUrl } from "../../utils/constants";
 
 const UserEdit = () => {
   const { id } = useParams();
@@ -79,7 +80,7 @@ const UserEdit = () => {
         setFilterDepartment(user.student.section.department.id);
       }
       if (user.photo_url) {
-        setPhotoPreview(user.photo_url);
+        setPhotoPreview(getFileUrl(user.photo_url));
       }
     }
   }, [user]);
@@ -105,7 +106,7 @@ const UserEdit = () => {
 
   const handleRemovePhoto = () => {
     setPhotoFile(null);
-    setPhotoPreview(user?.photo_url || null);
+    setPhotoPreview(user?.photo_url ? getFileUrl(user.photo_url) : null);
     if (photoInputRef.current) {
       photoInputRef.current.value = "";
     }

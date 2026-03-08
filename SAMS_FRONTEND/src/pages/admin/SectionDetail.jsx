@@ -11,6 +11,7 @@ import {
 } from "react-icons/hi";
 import { getSectionById } from "../../api/admin.api";
 import { safeFormatDate } from "../../utils/formatDate";
+import { getFileUrl } from "../../utils/constants";
 
 const SectionDetail = () => {
   const { id } = useParams();
@@ -320,7 +321,7 @@ const SectionDetail = () => {
                       <div className="flex items-center gap-3">
                         {student.user?.photo_url ? (
                           <img
-                            src={student.user.photo_url}
+                            src={getFileUrl(student.user.photo_url)}
                             alt={student.user.fullname}
                             className="w-8 h-8 rounded-full object-cover"
                           />

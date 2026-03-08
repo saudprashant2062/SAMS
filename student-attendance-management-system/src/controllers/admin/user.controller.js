@@ -130,8 +130,18 @@ export const bulkCreateTeachersCSV = asyncHandler(async (req, res) => {
    GET ALL USERS
 ================================ */
 export const getAllUsers = asyncHandler(async (req, res) => {
-    const { search, role, page, limit } = req.query;
-    const result = await getAllUsersService({ search, role, page, limit });
+    const { search, role, page, limit, department_id, batch_id, semester_id, section_id } =
+        req.query;
+    const result = await getAllUsersService({
+        search,
+        role,
+        page,
+        limit,
+        department_id,
+        batch_id,
+        semester_id,
+        section_id,
+    });
     res.status(200).json(new ApiResponse(200, result, 'Users fetched'));
 });
 

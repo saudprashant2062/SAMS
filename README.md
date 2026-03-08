@@ -62,7 +62,7 @@ SAMS is a complete attendance management solution that handles the entire lifecy
 - **Database**: PostgreSQL
 - **Authentication**: JWT (JSON Web Tokens)
 - **Email**: Nodemailer
-- **File Upload**: Multer + Cloudinary
+- **File Upload**: Multer (local storage)
 - **Monitoring**: Sentry
 - **API Documentation**: Swagger UI
 - **Validation**: Zod
@@ -300,10 +300,6 @@ EMAIL_PORT=587
 EMAIL_USER=your-email@gmail.com
 EMAIL_PASSWORD=your-app-password
 
-# Cloudinary
-CLOUDINARY_CLOUD_NAME=your-cloud-name
-CLOUDINARY_API_KEY=your-api-key
-CLOUDINARY_API_SECRET=your-api-secret
 ```
 
 #### Frontend (.env)
@@ -390,7 +386,7 @@ npm start
 - **Frontend**: Vercel, Netlify, or any static hosting
 - **Backend**: Heroku, Railway, DigitalOcean App Platform, or AWS EC2
 - **Database**: PostgreSQL on Supabase, Railway, or AWS RDS
-- **File Storage**: Cloudinary or AWS S3
+- **File Storage**: Local uploads directory
 
 ### Environment Considerations
 

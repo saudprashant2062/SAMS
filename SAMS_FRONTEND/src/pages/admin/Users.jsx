@@ -26,16 +26,24 @@ import {
   getAllSections,
   getAllBatches,
   getAllDepartments,
+  getAllSemesters,
 } from "../../api/admin.api";
 import AlertMessage from "../../components/common/AlertMessage";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import Pagination from "../../components/common/Pagination";
+import CascadingFilters from "../../components/common/CascadingFilters";
 
 const Users = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [academicFilters, setAcademicFilters] = useState({
+    department_id: "",
+    batch_id: "",
+    semester_id: "",
+    section_id: "",
+  });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState("student"); // student, teacher, admin, bulk-student, bulk-teacher
   const [bulkFile, setBulkFile] = useState(null);
@@ -100,10 +108,42 @@ const Users = () => {
     setPage(1);
   };
 
+  const handleAcademicFilterChange = (newFilters) => {
+    setAcademicFilters(newFilters);
+    // When academic filters are applied, force role to STUDENT
+    if (
+      newFilters.department_id ||
+      newFilters.batch_id ||
+      newFilters.semester_id ||
+      newFilters.section_id
+    ) {
+      setRoleFilter("STUDENT");
+    }
+    setPage(1);
+  };
+
+  // Build query params with academic filters
+  const queryParams = {
+    search,
+    role: roleFilter,
+    page,
+    limit: 20,
+    ...(academicFilters.department_id && {
+      department_id: academicFilters.department_id,
+    }),
+    ...(academicFilters.batch_id && { batch_id: academicFilters.batch_id }),
+    ...(academicFilters.semester_id && {
+      semester_id: academicFilters.semester_id,
+    }),
+    ...(academicFilters.section_id && {
+      section_id: academicFilters.section_id,
+    }),
+  };
+
   // Fetch data
   const { data: usersData, isLoading } = useQuery({
-    queryKey: ["users", { search, role: roleFilter, page }],
-    queryFn: () => getAllUsers({ search, role: roleFilter, page, limit: 20 }),
+    queryKey: ["users", queryParams],
+    queryFn: () => getAllUsers(queryParams),
     select: (res) => ({ data: res.data.data, pagination: res.data.pagination }),
   });
   const users = usersData?.data;
@@ -124,6 +164,12 @@ const Users = () => {
   const { data: departments } = useQuery({
     queryKey: ["departments"],
     queryFn: () => getAllDepartments({ limit: 100 }),
+    select: (res) => res.data.data,
+  });
+
+  const { data: semesters } = useQuery({
+    queryKey: ["semesters"],
+    queryFn: () => getAllSemesters({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
@@ -561,45 +607,77 @@ const Users = () => {
 
       {/* Filters */}
       <div
-        className="rounded-xl p-4 shadow-sm flex flex-wrap gap-4 items-end"
+        className="rounded-xl p-4 shadow-sm space-y-4"
         style={{
           backgroundColor: "var(--bg-card)",
           border: "1px solid var(--border)",
         }}
       >
-        <div className="relative flex-1 min-w-50">
-          <HiOutlineSearch
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-            style={{ color: "var(--text-muted)" }}
-          />
-          <input
-            type="text"
-            placeholder="Search users..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none"
+        <div className="flex flex-wrap gap-4 items-end">
+          <div className="relative flex-1 min-w-50">
+            <HiOutlineSearch
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: "var(--text-muted)" }}
+            />
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="w-full pl-9 pr-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm outline-none"
+              style={{
+                backgroundColor: "var(--bg-main)",
+                border: "1px solid var(--border)",
+                color: "var(--text-primary)",
+              }}
+            />
+          </div>
+          <select
+            value={roleFilter}
+            onChange={(e) => handleRoleFilterChange(e.target.value)}
+            disabled={
+              academicFilters.department_id ||
+              academicFilters.batch_id ||
+              academicFilters.semester_id ||
+              academicFilters.section_id
+            }
+            className="px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-35 disabled:opacity-50"
             style={{
               backgroundColor: "var(--bg-main)",
               border: "1px solid var(--border)",
               color: "var(--text-primary)",
             }}
-          />
+          >
+            <option value="">All Roles</option>
+            <option value="ADMIN">Admin</option>
+            <option value="TEACHER">Teacher</option>
+            <option value="STUDENT">Student</option>
+          </select>
         </div>
-        <select
-          value={roleFilter}
-          onChange={(e) => handleRoleFilterChange(e.target.value)}
-          className="px-2 py-1.5 md:px-3 md:py-2 rounded-lg text-xs md:text-sm outline-none min-w-35 disabled:opacity-50"
-          style={{
-            backgroundColor: "var(--bg-main)",
-            border: "1px solid var(--border)",
-            color: "var(--text-primary)",
+
+        {/* Academic Cascading Filters */}
+        <CascadingFilters
+          value={academicFilters}
+          onChange={handleAcademicFilterChange}
+          departments={departments || []}
+          batches={batches || []}
+          semesters={semesters || []}
+          sections={sections || []}
+          showSection={true}
+          showLabels={true}
+          required={{
+            department: false,
+            batch: false,
+            semester: false,
+            section: false,
           }}
-        >
-          <option value="">All Roles</option>
-          <option value="ADMIN">Admin</option>
-          <option value="TEACHER">Teacher</option>
-          <option value="STUDENT">Student</option>
-        </select>
+          placeholders={{
+            department: "All Departments",
+            batch: "All Batches",
+            semester: "All Semesters",
+            section: "All Sections",
+          }}
+        />
       </div>
 
       {/* Table */}

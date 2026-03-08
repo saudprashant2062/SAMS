@@ -12,11 +12,13 @@ import {
     deleteAttendanceRecordService,
     getAttendanceSummaryBySectionService,
 } from '../../services/admin/attendance.service.js';
+import { importAttendanceService } from '../../services/admin/attendanceImport.service.js';
 import {
     createAttendanceSessionSchema,
     markAttendanceSchema,
     updateAttendanceRecordSchema,
 } from '../../validators/attendance.validator.js';
+import { logActivity } from '../../services/admin/activityLog.service.js';
 
 /* =====================================================
    GET ALL ATTENDANCE SESSIONS
@@ -115,4 +117,30 @@ export const deleteAttendanceRecord = asyncHandler(async (req, res) => {
 export const getAttendanceSummaryBySection = asyncHandler(async (req, res) => {
     const summary = await getAttendanceSummaryBySectionService(req.params.section_id);
     res.status(200).json(new ApiResponse(200, summary, 'Attendance summary fetched'));
+});
+
+/* =====================================================
+   IMPORT ATTENDANCE FROM CSV/XLSX
+===================================================== */
+export const importAttendance = asyncHandler(async (req, res) => {
+    if (!req.file) throw new ApiError(400, 'Please upload a CSV or Excel file');
+
+    const { teaching_assignment_id } = req.body;
+    if (!teaching_assignment_id) {
+        throw new ApiError(400, 'Teaching assignment is required');
+    }
+
+    const result = await importAttendanceService(req.file.path, teaching_assignment_id);
+
+    // Log activity
+    await logActivity({
+        user_id: req.user.id,
+        action: 'BULK_CREATE',
+        entity_type: 'ATTENDANCE',
+        description: `Imported ${result.summary.imported} attendance records (${result.summary.failed} failed)`,
+        ip_address: req.ip,
+        user_agent: req.get('user-agent'),
+    });
+
+    res.status(200).json(new ApiResponse(200, result, 'Attendance import completed'));
 });

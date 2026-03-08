@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
+import path from 'path';
 
 import swaggerUi from 'swagger-ui-express';
 import swaggerDocument from './docs/swagger.js';
@@ -56,6 +57,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(morgan('dev'));
+
+/* ------------------------------
+   STATIC FILE SERVING
+------------------------------ */
+app.use('/uploads', express.static(path.resolve('uploads')));
 
 /* ------------------------------
 SWAGGER SETUP

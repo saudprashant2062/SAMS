@@ -82,7 +82,7 @@ Production-ready Node.js (Express) + Prisma + PostgreSQL backend for managing st
 - Node.js, Express 5
 - Prisma ORM with PostgreSQL
 - Zod for validation
-- Multer for uploads, Cloudinary integration
+- Multer for uploads (local storage)
 - Nodemailer for email delivery
 - Sentry integration
 
@@ -136,10 +136,6 @@ EMAIL_PORT=587
 EMAIL_USER=you@example.com
 EMAIL_PASSWORD=app-password
 
-# Cloudinary
-CLOUDINARY_CLOUD_NAME=your-cloud-name
-CLOUDINARY_API_KEY=your-api-key
-CLOUDINARY_API_SECRET=your-api-secret
 ```
 
 ## Scripts

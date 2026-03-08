@@ -11,7 +11,9 @@ import {
     updateAttendanceRecord,
     deleteAttendanceRecord,
     getAttendanceSummaryBySection,
+    importAttendance,
 } from '../../controllers/admin/attendance.controller.js';
+import { uploadFile } from '../../utils/multer.utils.js';
 
 const router = express.Router();
 
@@ -34,6 +36,11 @@ router.delete('/sessions/:id', deleteAttendanceSession);
 router.post('/records', markAttendance);
 router.patch('/records/:id', updateAttendanceRecord);
 router.delete('/records/:id', deleteAttendanceRecord);
+
+/* =====================================================
+   ATTENDANCE IMPORT (CSV/XLSX)
+===================================================== */
+router.post('/import', uploadFile.single('file'), importAttendance);
 
 /* =====================================================
    ATTENDANCE SUMMARY

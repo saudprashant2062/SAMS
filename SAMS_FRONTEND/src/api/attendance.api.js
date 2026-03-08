@@ -127,3 +127,13 @@ export const deleteAttendanceRecord = (id) => {
 export const getAttendanceSummaryBySection = (sectionId) => {
   return axiosInstance.get(`/admin/attendance/summary/section/${sectionId}`);
 };
+
+/**
+ * Import Attendance from CSV/XLSX (Admin)
+ * POST /admin/attendance/import
+ */
+export const importAttendance = (formData) => {
+  return axiosInstance.post("/admin/attendance/import", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+};

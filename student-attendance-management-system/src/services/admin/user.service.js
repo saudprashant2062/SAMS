@@ -1,7 +1,6 @@
 import prisma from '../../config/prisma.js';
 import ApiError from '../../utils/ApiError.utils.js';
 import { hashPassword } from '../../utils/bcrypt.js';
-import cloudinary from '../../config/cloudinary.js';
 import fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import csv from 'csv-parser';
@@ -49,36 +48,11 @@ const generateTeacherId = async () => {
     return `TCH-${teacherNumber}`;
 };
 
-/* ---------- Upload photo to Cloudinary ---------- */
-const uploadPhoto = async filePath => {
-    try {
-        const result = await cloudinary.uploader.upload(filePath, {
-            folder: 'profile_photos',
-            use_filename: true,
-            unique_filename: true,
-            timeout: 60000, // 60 second timeout
-        });
-
-        // Delete local file after successful upload
-        try {
-            await fsPromises.unlink(filePath);
-        } catch (unlinkErr) {
-            // File deletion failed but upload succeeded, log for cleanup
-            if (process.env.NODE_ENV === 'development') {
-                console.error('Error deleting local file after upload:', unlinkErr.message);
-            }
-        }
-
-        return result.secure_url;
-    } catch (error) {
-        // Try to delete file even if upload failed
-        try {
-            await fsPromises.unlink(filePath);
-        } catch (unlinkError) {
-            // Ignore cleanup errors
-        }
-        throw new ApiError(500, 'Failed to upload photo. Please try again.');
-    }
+/* ---------- Save photo locally and return relative path ---------- */
+const savePhoto = filePath => {
+    // The file is already saved by multer to uploads/profile-pictures/
+    // Just return the relative path for database storage
+    return '/' + filePath.replace(/\\/g, '/');
 };
 
 /* ---------- Create single student ---------- */
@@ -113,7 +87,7 @@ export const createStudentService = async ({
 
     const hashedPassword = await hashPassword(password);
     let photo_url = null;
-    if (file) photo_url = await uploadPhoto(file.path);
+    if (file) photo_url = savePhoto(file.path);
 
     const stdId = await generateStudentId(section_id, batch_id);
 
@@ -156,7 +130,7 @@ export const createTeacherService = async ({
 
     const hashedPassword = await hashPassword(password);
     let photo_url = null;
-    if (file) photo_url = await uploadPhoto(file.path);
+    if (file) photo_url = savePhoto(file.path);
 
     const teacherId = await generateTeacherId();
 
@@ -174,24 +148,6 @@ export const createTeacherService = async ({
     });
 
     return teacher;
-};
-
-/* ---------- Upload photo to Cloudinary from URL or path ---------- */
-const uploadPhotoFromUrl = async photoUrl => {
-    if (!photoUrl) return null;
-
-    try {
-        // Upload to Cloudinary (works with URLs and local paths)
-        const result = await cloudinary.uploader.upload(photoUrl, {
-            folder: 'profile_photos',
-            use_filename: true,
-            unique_filename: true,
-        });
-        return result.secure_url;
-    } catch (error) {
-        // Return null if upload fails, don't break bulk creation
-        return null;
-    }
 };
 
 /* ---------- Parse CSV or Excel file and return array of rows ---------- */
@@ -326,7 +282,6 @@ export const bulkCreateStudentsCSVService = async (filePath, defaultSectionId, d
 
             const hashedPassword = await hashPassword(password);
             const stdId = await generateStudentId(section_id, batch_id);
-            const uploadedPhotoUrl = await uploadPhotoFromUrl(photo_url);
 
             const student = await prisma.user.create({
                 data: {
@@ -334,7 +289,7 @@ export const bulkCreateStudentsCSVService = async (filePath, defaultSectionId, d
                     email,
                     password: hashedPassword,
                     role: 'STUDENT',
-                    photo_url: uploadedPhotoUrl,
+                    photo_url: null,
                     phone_number,
                     student: { create: { stdId, roll_no, registration_no, section_id, batch_id } },
                 },
@@ -440,7 +395,6 @@ export const bulkCreateTeachersCSVService = async filePath => {
 
             const hashedPassword = await hashPassword(password);
             const teacherId = await generateTeacherId();
-            const uploadedPhotoUrl = await uploadPhotoFromUrl(photo_url);
 
             const teacher = await prisma.user.create({
                 data: {
@@ -448,7 +402,7 @@ export const bulkCreateTeachersCSVService = async filePath => {
                     email,
                     password: hashedPassword,
                     role: 'TEACHER',
-                    photo_url: uploadedPhotoUrl,
+                    photo_url: null,
                     phone_number,
                     teacher: { create: { teacherId, designation } },
                 },
@@ -479,7 +433,7 @@ export const bulkCreateTeachersCSVService = async filePath => {
    GET ALL USERS (ADMIN)
 ================================ */
 export const getAllUsersService = async (filters = {}) => {
-    const { search, role } = filters;
+    const { search, role, department_id, batch_id, semester_id, section_id } = filters;
     const pagination = parsePagination(filters);
     const where = {};
 
@@ -494,6 +448,24 @@ export const getAllUsersService = async (filters = {}) => {
     // Filter by role
     if (role) {
         where.role = role;
+    }
+
+    // Cascading academic filters (apply to students via their section/batch)
+    if (department_id || batch_id || semester_id || section_id) {
+        const studentWhere = {};
+        if (section_id) {
+            studentWhere.section_id = section_id;
+        } else {
+            if (batch_id) studentWhere.batch_id = batch_id;
+            if (department_id || semester_id) {
+                studentWhere.section = {};
+                if (department_id) studentWhere.section.department_id = department_id;
+                if (semester_id) studentWhere.section.semester_id = semester_id;
+            }
+        }
+        where.student = { is: studentWhere };
+        // Force role to STUDENT when academic filters are used
+        where.role = 'STUDENT';
     }
 
     const [total, users] = await Promise.all([
@@ -718,10 +690,10 @@ export const createAdminService = async data => {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
-    // Upload photo if provided
+    // Save photo locally if provided
     let photoUrl = null;
     if (file) {
-        photoUrl = await uploadPhoto(file.path);
+        photoUrl = savePhoto(file.path);
     }
 
     // Create admin user
@@ -852,16 +824,15 @@ export const updateUserService = async (id, data, file) => {
         if (existingPhone) throw new ApiError(400, 'Phone number already in use');
     }
 
-    // Upload photo if provided
+    // Save photo locally if provided
     let photo_url = user.photo_url;
     if (file) {
-        const result = await cloudinary.uploader.upload(file.path, {
-            folder: 'sams/users',
-            width: 300,
-            crop: 'scale',
-        });
-        photo_url = result.secure_url;
-        await fsPromises.unlink(file.path).catch(() => {});
+        // Delete old photo if it exists and is a local file
+        if (photo_url && photo_url.startsWith('/uploads/')) {
+            const oldPath = photo_url.substring(1); // Remove leading slash
+            await fsPromises.unlink(oldPath).catch(() => {});
+        }
+        photo_url = savePhoto(file.path);
     }
 
     // Update user base info

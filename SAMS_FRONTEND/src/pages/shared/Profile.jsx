@@ -1,6 +1,7 @@
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { selectUser } from "../../features/auth/auth.selector";
+import { getFileUrl } from "../../utils/constants";
 import {
   HiOutlineMail,
   HiOutlinePhone,
@@ -100,7 +101,7 @@ const Profile = () => {
           <div className="text-center">
             {user.photo_url ? (
               <img
-                src={user.photo_url}
+                src={getFileUrl(user.photo_url)}
                 alt={user.fullname}
                 className="w-32 h-32 rounded-full mx-auto object-cover border-4"
                 style={{ borderColor: "var(--primary-light)" }}

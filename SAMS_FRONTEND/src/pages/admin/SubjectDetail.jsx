@@ -12,6 +12,7 @@ import {
 } from "react-icons/hi";
 import { getSubjectById } from "../../api/admin.api";
 import { safeFormatDate } from "../../utils/formatDate";
+import { getFileUrl } from "../../utils/constants";
 
 const SubjectDetail = () => {
   const { id } = useParams();
@@ -352,7 +353,9 @@ const SubjectDetail = () => {
                         <div className="flex items-center gap-3">
                           {assignment.teacher?.user?.photo_url ? (
                             <img
-                              src={assignment.teacher.user.photo_url}
+                              src={getFileUrl(
+                                assignment.teacher.user.photo_url,
+                              )}
                               alt={assignment.teacher.user.fullname}
                               className="w-8 h-8 rounded-full object-cover"
                             />

@@ -8,6 +8,8 @@ import {
   HiOutlineTrash,
   HiOutlineX,
   HiOutlineCheck,
+  HiOutlineUpload,
+  HiOutlineDocumentText,
 } from "react-icons/hi";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import CascadingFilters from "../../components/common/CascadingFilters";
@@ -26,6 +28,7 @@ import {
   getAllBatches,
   getAllSemesters,
 } from "../../api/admin.api";
+import { importAttendance } from "../../api/attendance.api";
 
 const AdminAttendance = () => {
   const queryClient = useQueryClient();
@@ -56,6 +59,11 @@ const AdminAttendance = () => {
   const [editingSession, setEditingSession] = useState(null);
   const [editForm, setEditForm] = useState({ session_date: "" });
   const [page, setPage] = useState(1);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importTeachingAssignmentId, setImportTeachingAssignmentId] =
+    useState("");
+  const [importResult, setImportResult] = useState(null);
 
   const { data: sessionsData, isLoading } = useQuery({
     queryKey: ["attendanceSessions", filters, page],
@@ -167,6 +175,40 @@ const AdminAttendance = () => {
       }
     },
   });
+
+  // Import attendance mutation
+  const importMutation = useMutation({
+    mutationFn: (formData) => importAttendance(formData),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["attendanceSessions"]);
+      setImportResult(res.data);
+      setImportFile(null);
+    },
+    onError: (error) => {
+      setErrorMessage(
+        error.response?.data?.message || "Failed to import attendance",
+      );
+    },
+  });
+
+  const handleImportAttendance = (e) => {
+    e.preventDefault();
+    if (!importFile || !importTeachingAssignmentId) return;
+    const formData = new FormData();
+    formData.append("file", importFile);
+    formData.append("teaching_assignment_id", importTeachingAssignmentId);
+    setImportResult(null);
+    setErrorMessage("");
+    importMutation.mutate(formData);
+  };
+
+  const closeImportModal = () => {
+    setIsImportModalOpen(false);
+    setImportFile(null);
+    setImportTeachingAssignmentId("");
+    setImportResult(null);
+    setErrorMessage("");
+  };
 
   const refetchSessionDetails = async (sessionId) => {
     const res = await getAttendanceSessionById(sessionId);
@@ -320,14 +362,28 @@ const AdminAttendance = () => {
             View and manage attendance sessions
           </p>
         </div>
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors w-full sm:w-auto justify-center"
-          style={{ backgroundColor: "var(--primary)" }}
-        >
-          <HiOutlinePlus className="w-4 h-4" />
-          <span>Create Session</span>
-        </button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-colors flex-1 sm:flex-none justify-center"
+            style={{
+              backgroundColor: "var(--bg-main)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <HiOutlineUpload className="w-4 h-4" />
+            <span>Import</span>
+          </button>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors flex-1 sm:flex-none justify-center"
+            style={{ backgroundColor: "var(--primary)" }}
+          >
+            <HiOutlinePlus className="w-4 h-4" />
+            <span>Create Session</span>
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -809,6 +865,50 @@ const AdminAttendance = () => {
             </div>
 
             <div className="mt-4">
+              {/* Bulk Actions */}
+              <div className="flex gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAttendanceRecords((prev) =>
+                      prev.map((r) => ({ ...r, status: "PRESENT" })),
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: "#D1FAE5",
+                    color: "var(--status-present)",
+                  }}
+                >
+                  Mark All Present
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAttendanceRecords((prev) =>
+                      prev.map((r) => ({ ...r, status: "ABSENT" })),
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: "#FEE2E2",
+                    color: "var(--status-absent)",
+                  }}
+                >
+                  Mark All Absent
+                </button>
+                <span
+                  className="ml-auto text-xs self-center"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {
+                    attendanceRecords.filter((r) => r.status === "PRESENT")
+                      .length
+                  }{" "}
+                  / {attendanceRecords.length} present
+                </span>
+              </div>
+
               <table className="w-full">
                 <thead style={{ backgroundColor: "var(--primary-subtle)" }}>
                   <tr>
@@ -1143,6 +1243,232 @@ const AdminAttendance = () => {
                 >
                   {updateMutation.isPending ? "Updating..." : "Update Date"}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Import Attendance Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div
+            className="rounded-xl p-6 w-full max-w-lg shadow-xl max-h-[80vh] overflow-y-auto"
+            style={{ backgroundColor: "var(--bg-card)" }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <HiOutlineDocumentText
+                  className="w-5 h-5"
+                  style={{ color: "var(--primary)" }}
+                />
+                <h3
+                  className="text-lg font-semibold"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Import Attendance
+                </h3>
+              </div>
+              <button
+                onClick={closeImportModal}
+                className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <HiOutlineX className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleImportAttendance} className="space-y-4">
+              {/* Teaching Assignment Selection */}
+              <div>
+                <label
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Teaching Assignment *
+                </label>
+                <select
+                  required
+                  value={importTeachingAssignmentId}
+                  onChange={(e) =>
+                    setImportTeachingAssignmentId(e.target.value)
+                  }
+                  className="w-full px-4 py-2 rounded-lg border outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: "white",
+                    borderColor: "var(--border)",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <option value="">Select Teaching Assignment</option>
+                  {teachingAssignments?.map((ta) => (
+                    <option key={ta.id} value={ta.id}>
+                      {ta.subject?.name} - {ta.section?.name} (
+                      {ta.teacher?.user?.fullname})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* File Upload */}
+              <div>
+                <label
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  CSV or XLSX File *
+                </label>
+                <input
+                  type="file"
+                  required
+                  accept=".csv,.xlsx,.xls"
+                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                  className="w-full px-4 py-2 rounded-lg border outline-none text-sm"
+                  style={{
+                    backgroundColor: "white",
+                    borderColor: "var(--border)",
+                    color: "var(--text-primary)",
+                  }}
+                />
+                <p
+                  className="text-xs mt-1"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Required columns: student_id or roll_no, date, status
+                  (PRESENT/ABSENT/P/A/1/0)
+                </p>
+              </div>
+
+              {errorMessage && (
+                <div
+                  className="p-3 rounded-lg text-sm"
+                  style={{
+                    backgroundColor: "var(--danger-subtle)",
+                    color: "var(--danger)",
+                  }}
+                >
+                  {errorMessage}
+                </div>
+              )}
+
+              {/* Import Results */}
+              {importResult && (
+                <div
+                  className="p-4 rounded-lg space-y-2"
+                  style={{
+                    backgroundColor: "var(--primary-subtle)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <p
+                    className="font-medium text-sm"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    Import Complete
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        Sessions Created:{" "}
+                      </span>
+                      <span
+                        className="font-medium"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {importResult.data?.sessionsCreated ?? 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        Records Imported:{" "}
+                      </span>
+                      <span
+                        className="font-medium"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {importResult.data?.recordsImported ?? 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        Rows Processed:{" "}
+                      </span>
+                      <span
+                        className="font-medium"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {importResult.data?.totalRows ?? 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        Errors:{" "}
+                      </span>
+                      <span
+                        className="font-medium"
+                        style={{
+                          color:
+                            importResult.data?.errors?.length > 0
+                              ? "var(--danger)"
+                              : "var(--text-primary)",
+                        }}
+                      >
+                        {importResult.data?.errors?.length ?? 0}
+                      </span>
+                    </div>
+                  </div>
+                  {importResult.data?.errors?.length > 0 && (
+                    <div className="mt-2 max-h-32 overflow-y-auto">
+                      {importResult.data.errors.slice(0, 10).map((err, i) => (
+                        <p
+                          key={i}
+                          className="text-xs"
+                          style={{ color: "var(--danger)" }}
+                        >
+                          Row {err.row}: {err.message}
+                        </p>
+                      ))}
+                      {importResult.data.errors.length > 10 && (
+                        <p
+                          className="text-xs mt-1"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          ...and {importResult.data.errors.length - 10} more
+                          errors
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeImportModal}
+                  className="flex-1 px-4 py-2 rounded-lg font-medium border transition-colors"
+                  style={{
+                    backgroundColor: "white",
+                    borderColor: "var(--border)",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  {importResult ? "Close" : "Cancel"}
+                </button>
+                {!importResult && (
+                  <button
+                    type="submit"
+                    disabled={
+                      importMutation.isPending ||
+                      !importFile ||
+                      !importTeachingAssignmentId
+                    }
+                    className="flex-1 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: "var(--primary)" }}
+                  >
+                    {importMutation.isPending ? "Importing..." : "Import"}
+                  </button>
+                )}
               </div>
             </form>
           </div>
