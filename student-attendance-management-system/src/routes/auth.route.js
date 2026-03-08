@@ -12,6 +12,7 @@ import authMiddleware from '../middlewares/auth.middleware.js';
 import {
     authLimiter,
     passwordResetLimiter,
+    resetTokenLimiter,
     refreshTokenLimiter,
 } from '../middlewares/rateLimiter.middleware.js';
 
@@ -26,6 +27,6 @@ router.post('/refresh-token', refreshTokenLimiter, refreshToken);
 router.get('/me', authMiddleware, getMe);
 router.patch('/reset-password', authMiddleware, resetPassword);
 router.post('/forgot-password', passwordResetLimiter, forgotPassword);
-router.post('/reset-password-token', passwordResetLimiter, resetPasswordWithToken);
+router.post('/reset-password-token', resetTokenLimiter, resetPasswordWithToken);
 
 export default router;

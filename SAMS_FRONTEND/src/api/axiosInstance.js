@@ -53,6 +53,7 @@ axiosInstance.interceptors.response.use(
       originalRequest.url?.includes("/auth/login") ||
       originalRequest.url?.includes("/auth/register") ||
       originalRequest.url?.includes("/auth/forgot-password") ||
+      originalRequest.url?.includes("/auth/reset-password-token") ||
       originalRequest.url?.includes("/auth/refresh-token");
 
     // If 401 and not an auth endpoint and not already retried

@@ -30,15 +30,31 @@ export const authLimiter = rateLimit({
 });
 
 /**
- * Rate limiter for password reset endpoints (forgot-password, reset-password-token)
+ * Rate limiter for forgot-password endpoint (sends emails)
  * More restrictive to prevent email spam
  */
 export const passwordResetLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 3, // Limit each IP to 3 requests per hour
+    max: 5, // Limit each IP to 5 requests per hour
     message: {
         success: false,
         message: 'Too many password reset requests. Please try again after 1 hour.',
+        errors: null,
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+/**
+ * Rate limiter for reset-password-token endpoint
+ * More generous since it doesn't send emails
+ */
+export const resetTokenLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10, // Limit each IP to 10 requests per 15 minutes
+    message: {
+        success: false,
+        message: 'Too many password reset attempts. Please try again later.',
         errors: null,
     },
     standardHeaders: true,
