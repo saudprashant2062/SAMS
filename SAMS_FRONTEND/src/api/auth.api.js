@@ -57,5 +57,8 @@ export const forgotPassword = (email) => {
  * POST /auth/reset-password-token
  */
 export const resetPasswordWithToken = (data) => {
-  return axiosInstance.post("/auth/reset-password-token", data);
+  return axiosInstance.post("/auth/reset-password-token", {
+    token: data.token,
+    newPassword: data.newPassword,
+  });
 };

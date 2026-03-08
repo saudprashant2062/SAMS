@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import {
-  HiOutlineCheckCircle,
-} from "react-icons/hi";
+import { HiOutlineCheckCircle } from "react-icons/hi";
 import PasswordField from "../../components/common/PasswordField";
 import { isPasswordValid, validatePassword } from "../../utils/validation";
 import { resetPasswordWithToken } from "../../api/auth.api";
@@ -22,7 +20,8 @@ const ResetPassword = () => {
   const [error, setError] = useState("");
 
   const resetPasswordMutation = useMutation({
-    mutationFn: (data) => resetPasswordWithToken(token, data),
+    mutationFn: (data) =>
+      resetPasswordWithToken({ token, newPassword: data.password }),
     onSuccess: () => {
       setIsSuccess(true);
       setTimeout(() => navigate("/login"), 3000);
@@ -43,11 +42,19 @@ const ResetPassword = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (!token) {
+      setError(
+        "Invalid or missing reset token. Please request a new password reset link.",
+      );
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
       return;
     }
-    
+
     if (!isPasswordValid(validatePassword(formData.password))) {
       setError("Please fulfill all password requirements");
       return;
@@ -167,7 +174,12 @@ const ResetPassword = () => {
             onChange={handleChange}
             placeholder="Confirm new password"
             required
-            error={formData.confirmPassword && formData.password !== formData.confirmPassword ? "Passwords do not match" : ""}
+            error={
+              formData.confirmPassword &&
+              formData.password !== formData.confirmPassword
+                ? "Passwords do not match"
+                : ""
+            }
           />
 
           <button

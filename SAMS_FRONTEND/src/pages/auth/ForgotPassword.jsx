@@ -21,7 +21,7 @@ const ForgotPassword = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    forgotPasswordMutation.mutate({ email });
+    forgotPasswordMutation.mutate(email);
   };
 
   if (isSubmitted) {

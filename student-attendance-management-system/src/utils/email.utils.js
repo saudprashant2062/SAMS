@@ -1,5 +1,6 @@
 import transporter from '../config/nodemailer.js';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,17 +14,21 @@ const LOGO_PATH = path.join(__dirname, '../../../SAMS_FRONTEND/public/Academia.p
 export const sendPasswordResetEmail = async (email, resetToken) => {
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
+    // Only attach logo if the file exists (won't exist on Render/production)
+    const attachments = [];
+    if (fs.existsSync(LOGO_PATH)) {
+        attachments.push({
+            filename: 'Academia.png',
+            path: LOGO_PATH,
+            cid: 'academiaLogo',
+        });
+    }
+
     const mailOptions = {
         from: `"Student Attendance System" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: 'Reset Your Password',
-        attachments: [
-            {
-                filename: 'Academia.png',
-                path: LOGO_PATH,
-                cid: 'academiaLogo',
-            },
-        ],
+        attachments,
         html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
 
@@ -120,17 +125,21 @@ export const sendPasswordResetEmail = async (email, resetToken) => {
    SEND ATTENDANCE WARNING EMAIL
  ===================================================== */
 export const sendAttendanceWarningEmail = async (student, warnings) => {
+    // Only attach logo if the file exists (won't exist on Render/production)
+    const logoAttachments = [];
+    if (fs.existsSync(LOGO_PATH)) {
+        logoAttachments.push({
+            filename: 'Academia.png',
+            path: LOGO_PATH,
+            cid: 'academiaLogo',
+        });
+    }
+
     const mailOptions = {
         from: `"Student Attendance System" <${process.env.EMAIL_USER}>`,
         to: student.user.email,
         subject: '⚠️ Low Attendance Warning',
-        attachments: [
-            {
-                filename: 'Academia.png',
-                path: LOGO_PATH,
-                cid: 'academiaLogo',
-            },
-        ],
+        attachments: logoAttachments,
         html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
             <!-- Header -->
@@ -156,14 +165,18 @@ export const sendAttendanceWarningEmail = async (student, warnings) => {
                             </tr>
                         </thead>
                         <tbody>
-                            ${warnings.map(w => `
+                            ${warnings
+                                .map(
+                                    w => `
                                 <tr>
                                     <td style="padding: 10px; border: 1px solid #dee2e6;">${w.subject}</td>
                                     <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center; color: #dc3545; font-weight: bold;">
                                         ${w.percentage}%
                                     </td>
                                 </tr>
-                            `).join('')}
+                            `,
+                                )
+                                .join('')}
                         </tbody>
                     </table>
                 </div>

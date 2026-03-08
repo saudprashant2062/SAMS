@@ -100,7 +100,7 @@ export const resetPassword = asyncHandler(async (req, res) => {
 ===================================================== */
 export const forgotPassword = asyncHandler(async (req, res) => {
     // Validate input
-    const parsed = forgotPasswordValidator.safeParse(req.body.email);
+    const parsed = forgotPasswordValidator.safeParse(req.body);
 
     if (!parsed.success) {
         throw new ApiError(422, 'Validation failed', parsed.error.format());
