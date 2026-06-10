@@ -9,6 +9,7 @@ This guide will help you deploy the Student Attendance Management System (SAMS) 
 - Railway account (for backend)
 - Vercel account (for frontend)
 - Supabase account (already set up)
+- Node.js installed (for running deployment scripts)
 
 ## 🚀 Deployment Overview
 
@@ -18,7 +19,47 @@ This guide will help you deploy the Student Attendance Management System (SAMS) 
 | Backend | Railway | `your-app.railway.app` | Free ($5 credit/month) |
 | Database | Supabase | Already configured | Free |
 
-## Step-by-Step Deployment
+## 🤖 Quick Deployment with Automated Scripts
+
+We've created automated deployment scripts to simplify the process! Choose the script based on your operating system:
+
+### Windows
+
+```bash
+# Deploy Backend
+./deploy-backend.bat
+
+# Deploy Frontend
+./deploy-frontend.bat
+```
+
+### Mac/Linux
+
+```bash
+# Deploy Backend
+./deploy-backend.sh
+
+# Deploy Frontend
+./deploy-frontend.sh
+```
+
+### Using Node.js (Cross-platform)
+
+```bash
+# Install Railway and Vercel CLIs first
+npm install -g @railway/cli vercel
+
+# Deploy everything
+node deploy.js --all
+
+# Or deploy individually
+node deploy.js --backend   # Backend only
+node deploy.js --frontend  # Frontend only
+```
+
+## 📝 Manual Deployment (Step-by-Step)
+
+If you prefer to deploy manually or the scripts don't work, follow these steps:
 
 ### 1. Push Your Code to GitHub
 
